@@ -58,6 +58,10 @@ jobs:
         with:
           arch: x64
 
+      - name: Restore the custom vcpkg root
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value 'VCPKG_ROOT=C:\wsvcpkg'
+
       - name: Install vcpkg dependencies
         run: >
           C:\wsvcpkg\vcpkg install
