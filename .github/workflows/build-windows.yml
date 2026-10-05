@@ -85,6 +85,7 @@ jobs:
 
       - name: Sign private test installers
         shell: pwsh
+        timeout-minutes: 15
         env:
           CUSTOM_SIGNING_PFX_B64: ${{ secrets.CUSTOM_SIGNING_PFX_B64 }}
           CUSTOM_SIGNING_PFX_PASSWORD: ${{ secrets.CUSTOM_SIGNING_PFX_PASSWORD }}
@@ -99,10 +100,10 @@ jobs:
             $env:CUSTOM_SIGNING_PFX_PASSWORD,
             [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
           )
-          $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
-          $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-          $rootStore.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate.RawData))
-          $rootStore.Close()
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'private-test-signing.cer'
+          [IO.File]::WriteAllBytes($certificatePath, $certificate.RawData)
+          & certutil.exe -f -user -addstore Root $certificatePath | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Could not trust the private test certificate in the temporary runner.' }
           $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
           $signtool = Get-ChildItem $sdkBin -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
@@ -118,6 +119,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $($installer.Name)." }
           }
           Remove-Item -LiteralPath $pfxPath -Force
+          Remove-Item -LiteralPath $certificatePath -Force
 
       - uses: actions/upload-artifact@v4
         with:
