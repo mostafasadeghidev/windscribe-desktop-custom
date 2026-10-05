@@ -1,3 +1,4 @@
+# GitHub Actions workflow reindexed
 name: Prepare upstream update pull request
 
 on:

@@ -1,3 +1,4 @@
+# GitHub Actions workflow reindexed
 name: Build Windows private test
 
 on:
