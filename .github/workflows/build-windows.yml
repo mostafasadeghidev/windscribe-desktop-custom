@@ -43,6 +43,7 @@ jobs:
       - name: Install vcpkg
         shell: cmd
         run: |
+          if exist C:\wsvcpkg rmdir /s /q C:\wsvcpkg
           if not exist C:\vcpkg-bincache mkdir C:\vcpkg-bincache
           git clone https://github.com/Windscribe/ws-vcpkg-registry.git C:\wsreg || exit /b 1
           call C:\wsreg\install-vcpkg\vcpkg_install.bat C:\wsvcpkg
