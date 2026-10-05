@@ -14,6 +14,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Import private test signing identity
+        shell: bash
+        env:
+          CUSTOM_SIGNING_PFX_B64: ${{ secrets.CUSTOM_SIGNING_PFX_B64 }}
+          CUSTOM_SIGNING_PFX_PASSWORD: ${{ secrets.CUSTOM_SIGNING_PFX_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CUSTOM_SIGNING_PFX_B64" || -z "$CUSTOM_SIGNING_PFX_PASSWORD" ]]; then
+            echo "Missing private test signing certificate Actions secrets." >&2
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/private-test.keychain-db"
+          p12="$RUNNER_TEMP/private-test-signing.p12"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$CUSTOM_SIGNING_PFX_B64" | base64 --decode > "$p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -f pkcs12 -k "$keychain" -P "$CUSTOM_SIGNING_PFX_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain" | grep -F 'Mostafa Private Test Builds'
+          echo "PRIVATE_TEST_CODESIGN_IDENTITY=Mostafa Private Test Builds" >> "$GITHUB_ENV"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -40,6 +64,13 @@ jobs:
 
       - name: Build app and test installer
         run: python tools/build_all.py --dev-mode
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/private-test.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/private-test-signing.p12"
 
       - uses: actions/upload-artifact@v4
         with:

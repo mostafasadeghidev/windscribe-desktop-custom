@@ -25,7 +25,9 @@ GeneralWindowItem::GeneralWindowItem(ScalableGraphicsObject *parent, Preferences
     connect(preferences, &Preferences::isDockedToTrayChanged, this, &GeneralWindowItem::onIsDockedToTrayPreferencesChanged);
     connect(preferences, &Preferences::languageChanged, this, &GeneralWindowItem::onLanguagePreferencesChanged);
     connect(preferences, &Preferences::locationOrderChanged, this, &GeneralWindowItem::onLocationOrderPreferencesChanged);
+#ifndef WINDSCRIBE_DEV_MODE
     connect(preferences, &Preferences::updateChannelChanged, this, &GeneralWindowItem::onUpdateChannelPreferencesChanged);
+#endif
     connect(preferences, &Preferences::isStartMinimizedChanged, this, &GeneralWindowItem::onStartMinimizedPreferencesChanged);
     connect(preferences, &Preferences::showLocationLoadChanged, this, &GeneralWindowItem::onShowLocationLoadPreferencesChanged);
     connect(preferences, &Preferences::minimizeAndCloseToTrayChanged, this, &GeneralWindowItem::onMinimizeAndCloseToTrayPreferencesChanged);
@@ -128,7 +130,9 @@ GeneralWindowItem::GeneralWindowItem(ScalableGraphicsObject *parent, Preferences
     comboBoxUpdateChannel_->setIcon(ImageResourcesSvg::instance().getIndependentPixmap("preferences/UPDATE_CHANNEL"));
     connect(comboBoxUpdateChannel_, &ComboBoxItem::currentItemChanged, this, &GeneralWindowItem::onUpdateChannelItemChanged);
     updateChannelGroup_->addItem(comboBoxUpdateChannel_);
+#ifndef WINDSCRIBE_DEV_MODE
     addItem(updateChannelGroup_);
+#endif
 
     connect(&LanguageController::instance(), &LanguageController::languageChanged, this, &GeneralWindowItem::onLanguageChanged);
 
@@ -291,6 +295,7 @@ void GeneralWindowItem::onLanguageChanged()
     multiDesktopBehaviorItem_->setItems(enumToList<MULTI_DESKTOP_BEHAVIOR>(), preferences_->multiDesktopBehavior());
 #endif
 
+#ifndef WINDSCRIBE_DEV_MODE
     comboBoxUpdateChannel_->setDescription(tr("Choose to receive stable, beta, or experimental builds."),
                                            QString("https://%1/features/update-channels").arg(HardcodedSettings::instance().windscribeServerUrl()));
     comboBoxUpdateChannel_->setLabelCaption(tr("Update Channel"));
@@ -302,6 +307,7 @@ void GeneralWindowItem::onLanguageChanged()
         }
     }
     comboBoxUpdateChannel_->setItems(updateChannelList, preferences_->updateChannel());
+#endif
     versionInfoItem_->setCaption(tr("Version"));
 }
 
@@ -343,6 +349,9 @@ void GeneralWindowItem::onMultiDesktopBehaviorPreferencesChanged(QVariant value)
 
 void GeneralWindowItem::onVersionInfoClicked()
 {
+#ifdef WINDSCRIBE_DEV_MODE
+    QDesktopServices::openUrl(QUrl("https://github.com/mostafasadeghidev/windscribe-desktop-custom/actions"));
+#else
 #if defined(Q_OS_MACOS)
     // macOS platform name on website is "mac" instead of "macos"
     QString platform = "mac";
@@ -353,6 +362,7 @@ void GeneralWindowItem::onVersionInfoClicked()
         QString("https://%1/changelog/%2")
             .arg(HardcodedSettings::instance().windscribeServerUrl())
             .arg(platform)));
+#endif
 }
 
 } // namespace PreferencesWindow

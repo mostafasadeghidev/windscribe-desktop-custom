@@ -44,9 +44,44 @@ jobs:
         run: |
           docker run --rm -e VCPKG_ROOT=/vcpkg -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc 'cd /w/tools && ./build_all --dev-mode'
 
+      - name: Sign Debian packages with the private test certificate
+        shell: bash
+        env:
+          CUSTOM_SIGNING_PFX_B64: ${{ secrets.CUSTOM_SIGNING_PFX_B64 }}
+          CUSTOM_SIGNING_PFX_PASSWORD: ${{ secrets.CUSTOM_SIGNING_PFX_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CUSTOM_SIGNING_PFX_B64" || -z "$CUSTOM_SIGNING_PFX_PASSWORD" ]]; then
+            echo "Missing private test signing certificate Actions secrets." >&2
+            exit 1
+          fi
+          p12="$RUNNER_TEMP/private-test-signing.p12"
+          key="$RUNNER_TEMP/private-test-signing-key.pem"
+          cert="$RUNNER_TEMP/private-test-signing-cert.pem"
+          trap 'rm -f "$p12" "$key" "$cert"' EXIT
+          printf '%s' "$CUSTOM_SIGNING_PFX_B64" | base64 --decode > "$p12"
+          openssl pkcs12 -in "$p12" -nocerts -nodes -passin env:CUSTOM_SIGNING_PFX_PASSWORD -out "$key"
+          openssl pkcs12 -in "$p12" -clcerts -nokeys -passin env:CUSTOM_SIGNING_PFX_PASSWORD -out "$cert"
+          shopt -s nullglob
+          packages=(build-exe/*.deb)
+          if [[ ${#packages[@]} -eq 0 ]]; then
+            echo "No Debian package was produced." >&2
+            exit 1
+          fi
+          openssl x509 -in "$cert" -pubkey -noout > "$RUNNER_TEMP/private-test-signing-public.pem"
+          for package in "${packages[@]}"; do
+            openssl dgst -sha256 -sign "$key" -out "$package.sig" "$package"
+            cp "$cert" "$package.cert.pem"
+            openssl dgst -sha256 -verify "$RUNNER_TEMP/private-test-signing-public.pem" -signature "$package.sig" "$package"
+          done
+          rm -f "$RUNNER_TEMP/private-test-signing-public.pem"
+
       - uses: actions/upload-artifact@v4
         with:
           name: windscribe-linux-private-test-amd64
-          path: build-exe/*.deb
+          path: |
+            build-exe/*.deb
+            build-exe/*.deb.sig
+            build-exe/*.deb.cert.pem
           if-no-files-found: error
           retention-days: 14

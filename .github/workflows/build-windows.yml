@@ -73,6 +73,42 @@ jobs:
       - name: Build app and installer
         run: python tools\build_all.py --dev-mode
 
+      - name: Sign private test installers
+        shell: pwsh
+        env:
+          CUSTOM_SIGNING_PFX_B64: ${{ secrets.CUSTOM_SIGNING_PFX_B64 }}
+          CUSTOM_SIGNING_PFX_PASSWORD: ${{ secrets.CUSTOM_SIGNING_PFX_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CUSTOM_SIGNING_PFX_B64) -or [string]::IsNullOrWhiteSpace($env:CUSTOM_SIGNING_PFX_PASSWORD)) {
+            throw 'Missing private test signing certificate Actions secrets.'
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'private-test-signing.p12'
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CUSTOM_SIGNING_PFX_B64))
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $pfxPath,
+            $env:CUSTOM_SIGNING_PFX_PASSWORD,
+            [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          )
+          $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', 'CurrentUser')
+          $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+          $rootStore.Add([Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate.RawData))
+          $rootStore.Close()
+          $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+          $signtool = Get-ChildItem $sdkBin -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw 'Windows SDK signtool.exe was not found.' }
+          $installers = @(Get-ChildItem 'build-exe' -Filter '*.exe' -File)
+          if ($installers.Count -eq 0) { throw 'No Windows installer was produced.' }
+          foreach ($installer in $installers) {
+            & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $env:CUSTOM_SIGNING_PFX_PASSWORD $installer.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed for $($installer.Name)." }
+            & $signtool.FullName verify /pa /all $installer.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $($installer.Name)." }
+          }
+          Remove-Item -LiteralPath $pfxPath -Force
+
       - uses: actions/upload-artifact@v4
         with:
           name: windscribe-windows-private-test

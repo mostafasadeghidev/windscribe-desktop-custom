@@ -10,6 +10,19 @@ If the sync workflow reports conflicts, resolve them locally in a branch and ope
 
 ## Build private test packages
 
-Open **Actions** and manually run the workflow for Windows, macOS, or Linux. Download the resulting artifact from that run. Workflows use developer/test mode and are not for public release. Artifacts expire after 14 days. macOS system extensions and IKEv2 still have Apple entitlement/signing restrictions.
+Open **Actions** and manually run the workflow for Windows, macOS, or Linux. Download the resulting artifact from that run. Workflows use developer/test mode and are not for public release. Windows installers and macOS app/disk images use the private test code-signing identity; Linux Debian packages include a detached signature and the public certificate. Artifacts expire after 14 days.
+
+The signing identity is self-signed for private testing. It does not provide Microsoft Smart App Control reputation or Apple Developer ID notarization, and macOS system extensions/IKEv2 still have Apple entitlement restrictions. Keep the PFX and password in repository Actions secrets only; never commit them.
 
 Builds run only when manually requested because these desktop builds are large and private GitHub Actions minutes are limited.
+
+## Install updates
+
+Private test builds skip Windscribe's updater and hide the vendor update-channel selector. Get a replacement package from this repository's **Actions** artifacts and install it manually. Verify a Linux signature with:
+
+```sh
+openssl x509 -in package.deb.cert.pem -pubkey -noout > public-key.pem
+openssl dgst -sha256 -verify public-key.pem -signature package.deb.sig package.deb
+```
+
+A private GitHub repository cannot provide an in-app updater to an installed client without a separate authenticated update service; never embed a GitHub token in the app.

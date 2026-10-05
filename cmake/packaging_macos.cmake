@@ -28,13 +28,22 @@ foreach(_fw ${WS_MAC_UNUSED_FRAMEWORKS})
     )
 endforeach()
 
-# Sign main application bundle. Private DEV_MODE builds are ad-hoc signed and are not
-# notarized; regular builds retain Developer ID signing and hardened runtime.
+# Sign main application bundle. Private DEV_MODE builds use the supplied self-signed test
+# identity when available (otherwise ad-hoc signing) and are not notarized; regular builds
+# retain Developer ID signing and hardened runtime.
 if(DEV_MODE)
-    add_custom_command(TARGET prep-installer-macos POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing ${WS_MAC_APP_BUNDLE_NAME} for local testing..."
-        COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
-    )
+    if(DEFINED ENV{PRIVATE_TEST_CODESIGN_IDENTITY} AND NOT "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" STREQUAL "")
+        add_custom_command(TARGET prep-installer-macos POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Signing ${WS_MAC_APP_BUNDLE_NAME} with the private test identity..."
+            COMMAND ${CODESIGN_EXECUTABLE} --deep --force --timestamp=none --sign "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
+            COMMAND ${CODESIGN_EXECUTABLE} --verify --deep --strict "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
+        )
+    else()
+        add_custom_command(TARGET prep-installer-macos POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing ${WS_MAC_APP_BUNDLE_NAME} for local testing..."
+            COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
+        )
+    endif()
 else()
     add_custom_command(TARGET prep-installer-macos POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Signing ${WS_MAC_APP_BUNDLE_NAME}..."
@@ -108,11 +117,19 @@ if(BUILD_INSTALLER)
 
     # Sign installer.app
     if(DEV_MODE)
-        add_custom_command(TARGET build-dmg POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing installer.app for local testing..."
-            COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
-            COMMAND ${CODESIGN_EXECUTABLE} --verify "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
-        )
+        if(DEFINED ENV{PRIVATE_TEST_CODESIGN_IDENTITY} AND NOT "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" STREQUAL "")
+            add_custom_command(TARGET build-dmg POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Signing installer.app with the private test identity..."
+                COMMAND ${CODESIGN_EXECUTABLE} --deep --force --timestamp=none --sign "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+                COMMAND ${CODESIGN_EXECUTABLE} --verify --deep --strict "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+            )
+        else()
+            add_custom_command(TARGET build-dmg POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing installer.app for local testing..."
+                COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+                COMMAND ${CODESIGN_EXECUTABLE} --verify "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+            )
+        endif()
     else()
         add_custom_command(TARGET build-dmg POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Signing installer.app..."
@@ -166,7 +183,18 @@ if(BUILD_INSTALLER)
     # verify the whole image before mounting it during auto-update; a bundle signature leaves some files
     # unchecked. -i pins the identifier the helper checks. The inner .app stays signed+notarized (above)
     # so older helpers that still extract-and-verify the .app can keep updating to this release.
-    if(NOT DEV_MODE)
+    if(DEV_MODE AND DEFINED ENV{PRIVATE_TEST_CODESIGN_IDENTITY} AND NOT "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" STREQUAL "")
+        add_custom_command(TARGET build-dmg POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Signing DMG with the private test identity..."
+            COMMAND ${CODESIGN_EXECUTABLE}
+                    --force
+                    --timestamp=none
+                    --identifier "${WS_MAC_INSTALLER_DMG_BUNDLE_ID}"
+                    --sign "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}"
+                    "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
+            COMMAND ${CODESIGN_EXECUTABLE} --verify --strict --verbose=2 "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
+        )
+    elseif(NOT DEV_MODE)
         add_custom_command(TARGET build-dmg POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E echo "Signing DMG..."
             COMMAND ${CODESIGN_EXECUTABLE}

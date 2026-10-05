@@ -557,6 +557,11 @@ void Engine::updateWindowInfo(qint32 windowCenterX, qint32 windowCenterY)
 
 void Engine::updateVersion(qint64 windowHandle)
 {
+#ifdef WINDSCRIBE_DEV_MODE
+    Q_UNUSED(windowHandle);
+    qCInfo(LOG_AUTO_UPDATER) << "Ignoring vendor updater request in a private test build; install updates from the private GitHub repository.";
+    return;
+#endif
     QMetaObject::invokeMethod(this, "updateVersionImpl", Q_ARG(qint64, windowHandle));
 }
 
@@ -1456,6 +1461,11 @@ void Engine::onFailOverTryingBackupEndpoint()
 
 void Engine::onCheckUpdateUpdated(const api_responses::CheckUpdate &checkUpdate)
 {
+#ifdef WINDSCRIBE_DEV_MODE
+    Q_UNUSED(checkUpdate);
+    qCInfo(LOG_AUTO_UPDATER) << "Ignoring vendor update result in a private test build.";
+    return;
+#endif
     qCDebug(LOG_BASIC) << "Received Check Update Answer";
 
     installerUrl_ = checkUpdate.url();
@@ -2605,8 +2615,12 @@ void Engine::onApiResourceManagerCallback(ApiResourcesManagerNotification notifi
         api_responses::Notifications notifications(WSNet::instance()->apiResourcersManager()->notifications());
         emit notificationsUpdated(notifications.notifications());
     } else if (notification == ApiResourcesManagerNotification::kCheckUpdate) {
+#ifdef WINDSCRIBE_DEV_MODE
+        qCInfo(LOG_AUTO_UPDATER) << "Ignoring vendor update notification in a private test build.";
+#else
         api_responses::CheckUpdate checkUpdate(WSNet::instance()->apiResourcersManager()->checkUpdate());
         onCheckUpdateUpdated(checkUpdate);
+#endif
     } else if (notification == ApiResourcesManagerNotification::kLogoutFinished) {
         // nothing todo
     } else if (notification == ApiResourcesManagerNotification::kSessionDeleted) {
@@ -3117,6 +3131,10 @@ void Engine::enableDohSettings()
 
 void Engine::doCheckUpdate()
 {
+#ifdef WINDSCRIBE_DEV_MODE
+    qCInfo(LOG_AUTO_UPDATER) << "Skipping vendor update check in a private test build; updates are installed from the private GitHub repository.";
+    return;
+#endif
     UPDATE_CHANNEL channel = engineSettings_.updateChannel();
     if (overrideUpdateChannelWithInternal_) {
         qCInfo(LOG_BASIC) << "Overriding update channel: internal";
