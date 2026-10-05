@@ -35,7 +35,7 @@ jobs:
         if: steps.linux-libs.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          for lib in qt wireguard amneziawg wstunnel; do
+          for lib in wireguard amneziawg wstunnel; do
             docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc "cd /w/tools/deps && ./install_$lib"
           done
 
