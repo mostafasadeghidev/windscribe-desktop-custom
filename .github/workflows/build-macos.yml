@@ -27,6 +27,7 @@ jobs:
           fi
           keychain="$RUNNER_TEMP/private-test.keychain-db"
           p12="$RUNNER_TEMP/private-test-signing.p12"
+          cert_pem="$RUNNER_TEMP/private-test-signing-cert.pem"
           keychain_password="$(openssl rand -hex 24)"
           printf '%s' "$CUSTOM_SIGNING_PFX_B64" | base64 --decode > "$p12"
           openssl pkcs12 -in "$p12" -clcerts -nokeys -passin env:CUSTOM_SIGNING_PFX_PASSWORD -out "$cert_pem"
