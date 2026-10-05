@@ -75,6 +75,7 @@ void Backend::init()
 
     threadEngine_ = new QThread(this);
     engine_ = new Engine();
+    engine_->setEmployeeAccessAllowed(employeeAccessAllowed_);
     engine_->moveToThread(threadEngine_);
     connect(threadEngine_, &QThread::started, engine_, &Engine::init);
     connect(threadEngine_, &QThread::finished, this,  &Backend::onEngineCleanupFinished);
@@ -206,11 +207,34 @@ bool Backend::isLastLoginWithAuthHash() const
 
 void Backend::logout(bool keepFirewallOn)
 {
+    clearLoginCredentials();
     engine_->logout(keepFirewallOn);
+}
+
+void Backend::clearLoginCredentials()
+{
+    lastUsername_.clear();
+    lastPassword_.clear();
+    lastCode2fa_.clear();
+}
+
+void Backend::setEmployeeAccessAllowed(bool allowed)
+{
+    // Do not retain or reuse credentials left by the stock installer's auto-login flow.
+    if (!allowed) clearAutoLoginCredentials();
+    employeeAccessAllowed_ = allowed;
+    if (engine_) engine_->setEmployeeAccessAllowed(allowed);
+}
+
+void Backend::setAccessGuards(std::function<bool()> connectGuard, std::function<bool()> loginGuard)
+{
+    connectGuard_ = std::move(connectGuard);
+    loginGuard_ = std::move(loginGuard);
 }
 
 void Backend::sendConnect(const LocationID &lid, const types::ConnectionSettings &connectionSettings)
 {
+    if (connectGuard_ && !connectGuard_()) return;
     if (isDisconnected()) {
         osDnsServers_ = DnsUtils::getOSDefaultDnsServers();
     }
@@ -295,6 +319,7 @@ bool Backend::isFirewallAlwaysOn()
 
 void Backend::emergencyConnectClick()
 {
+    if (connectGuard_ && !connectGuard_()) return;
     emergencyConnectStateHelper_.connectClickFromUser();
     engine_->emergencyConnectClick();
 }
@@ -502,6 +527,8 @@ void Backend::onEngineFirewallStateChanged(bool isEnabled)
 
 void Backend::onEngineLoginFinished(const api_responses::PortMap &portMap)
 {
+    clearLoginCredentials();
+    if (loginGuard_ && !loginGuard_()) return;
     loginState_ = LOGIN_STATE_LOGGED_IN;
     lastLoginError_ = wsnet::LoginResult::kSuccess;
     preferencesHelper_.setPortMap(portMap);
@@ -668,6 +695,7 @@ void Backend::onEngineWifiSharingStateChanged(bool bEnabled, const QString &ssid
 
 void Backend::onEngineLogoutFinished()
 {
+    clearLoginCredentials();
     loginState_ = LOGIN_STATE_LOGGED_OUT;
     lastLoginError_ = wsnet::LoginResult::kSuccess;
     emit logoutFinished();

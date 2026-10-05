@@ -114,6 +114,7 @@ target_include_directories(gui PRIVATE
 )
 
 add_subdirectory(application)
+add_subdirectory(accessgate)
 add_subdirectory(bottominfowidget)
 add_subdirectory(commongraphics)
 add_subdirectory(commonwidgets)

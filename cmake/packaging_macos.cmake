@@ -28,18 +28,25 @@ foreach(_fw ${WS_MAC_UNUSED_FRAMEWORKS})
     )
 endforeach()
 
-# Sign main application bundle
-# First sign with --deep to sign all nested components
-add_custom_command(TARGET prep-installer-macos POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Signing ${WS_MAC_APP_BUNDLE_NAME}..."
-    COMMAND ${CODESIGN_EXECUTABLE}
-            --deep
-            --force
-            --options runtime
-            --timestamp
-            --sign "Developer ID Application"
-            "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
-)
+# Sign main application bundle. Private DEV_MODE builds are ad-hoc signed and are not
+# notarized; regular builds retain Developer ID signing and hardened runtime.
+if(DEV_MODE)
+    add_custom_command(TARGET prep-installer-macos POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing ${WS_MAC_APP_BUNDLE_NAME} for local testing..."
+        COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
+    )
+else()
+    add_custom_command(TARGET prep-installer-macos POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Signing ${WS_MAC_APP_BUNDLE_NAME}..."
+        COMMAND ${CODESIGN_EXECUTABLE}
+                --deep
+                --force
+                --options runtime
+                --timestamp
+                --sign "Developer ID Application"
+                "$<TARGET_BUNDLE_DIR:${WS_APP_TARGET}>"
+    )
+endif()
 # Then sign the main executable with entitlements (only if provisioning profile exists)
 if(WS_MAC_ENTITLEMENTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data/provisioning_profile/embedded.provisionprofile")
     add_custom_command(TARGET prep-installer-macos POST_BUILD
@@ -100,17 +107,25 @@ if(BUILD_INSTALLER)
     endforeach()
 
     # Sign installer.app
-    add_custom_command(TARGET build-dmg POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Signing installer.app..."
-        COMMAND ${CODESIGN_EXECUTABLE}
-                --deep
-                --force
-                --options runtime
-                --timestamp
-                --sign "Developer ID Application"
-                "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
-        COMMAND ${CODESIGN_EXECUTABLE} -v "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
-    )
+    if(DEV_MODE)
+        add_custom_command(TARGET build-dmg POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing installer.app for local testing..."
+            COMMAND ${CODESIGN_EXECUTABLE} --deep --force --sign - "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+            COMMAND ${CODESIGN_EXECUTABLE} --verify "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+        )
+    else()
+        add_custom_command(TARGET build-dmg POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Signing installer.app..."
+            COMMAND ${CODESIGN_EXECUTABLE}
+                    --deep
+                    --force
+                    --options runtime
+                    --timestamp
+                    --sign "Developer ID Application"
+                    "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+            COMMAND ${CODESIGN_EXECUTABLE} -v "$<TARGET_BUNDLE_DIR:${WS_MAC_INSTALLER_TARGET}>"
+        )
+    endif()
 
     # Rename installer.app to ${WS_MAC_INSTALLER_BUNDLE_NAME}
     add_custom_command(TARGET build-dmg POST_BUILD
@@ -151,16 +166,18 @@ if(BUILD_INSTALLER)
     # verify the whole image before mounting it during auto-update; a bundle signature leaves some files
     # unchecked. -i pins the identifier the helper checks. The inner .app stays signed+notarized (above)
     # so older helpers that still extract-and-verify the .app can keep updating to this release.
-    add_custom_command(TARGET build-dmg POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Signing DMG..."
-        COMMAND ${CODESIGN_EXECUTABLE}
-                --force
-                --timestamp
-                --identifier "${WS_MAC_INSTALLER_DMG_BUNDLE_ID}"
-                --sign "Developer ID Application"
-                "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
-        COMMAND ${CODESIGN_EXECUTABLE} -v "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
-    )
+    if(NOT DEV_MODE)
+        add_custom_command(TARGET build-dmg POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Signing DMG..."
+            COMMAND ${CODESIGN_EXECUTABLE}
+                    --force
+                    --timestamp
+                    --identifier "${WS_MAC_INSTALLER_DMG_BUNDLE_ID}"
+                    --sign "Developer ID Application"
+                    "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
+            COMMAND ${CODESIGN_EXECUTABLE} -v "${BUILD_EXE_DIR}/${WS_MAC_RESOLVED_NAME}.dmg"
+        )
+    endif()
 
     # Notarize + staple the DMG so its signature/ticket is offline-verifiable after download.
     if(ENABLE_NOTARIZE)

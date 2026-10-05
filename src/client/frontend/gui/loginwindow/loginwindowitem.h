@@ -38,6 +38,7 @@ public:
     void updateScaling() override;
 
     void setUsernameFocus();
+    void setEmployeeUsername(const QString &username);
 
 signals:
     void minimizeClick();

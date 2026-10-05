@@ -3,12 +3,14 @@
     "default-registry": {
       "kind": "git",
       "repository": "https://github.com/microsoft/vcpkg",
+      "reference": "e140b1fde236eb682b0d47f905e65008a191800f",
       "baseline": "e140b1fde236eb682b0d47f905e65008a191800f"
     },
     "registries": [
       {
         "kind": "git",
         "repository": "https://github.com/Windscribe/ws-vcpkg-registry",
+        "reference": "ef9b1277cc637891ca2b17638e21aa5d71f8f379",
         "baseline": "ef9b1277cc637891ca2b17638e21aa5d71f8f379",
         "packages": [
           "7zip",

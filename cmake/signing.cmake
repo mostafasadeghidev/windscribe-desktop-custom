@@ -96,6 +96,20 @@ if(APPLE)
     if(NOT CODESIGN_EXECUTABLE)
         message(FATAL_ERROR "codesign not found. Code signing is required on macOS.")
     endif()
+
+    # Private DEV_MODE builds use ad-hoc signatures and identifier-only requirements so
+    # the app and its SMJobBless helper can be tested without an Apple Developer ID.
+    # These requirements are intentionally unsuitable for releases.
+    if(DEV_MODE)
+        set(WS_MAC_GUI_REQUIREMENT "identifier &quot;${WS_MAC_GUI_BUNDLE_ID}&quot;")
+        set(WS_MAC_INSTALLER_REQUIREMENT "identifier &quot;${WS_MAC_INSTALLER_BUNDLE_ID}&quot;")
+        set(WS_MAC_HELPER_REQUIREMENT "identifier &quot;${WS_MAC_HELPER_BUNDLE_ID}&quot;")
+    else()
+        set(_WS_MAC_APPLE_REQUIREMENT_PREFIX "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ${DEVELOPMENT_TEAM}")
+        set(WS_MAC_GUI_REQUIREMENT "identifier &quot;${WS_MAC_GUI_BUNDLE_ID}&quot; and ${_WS_MAC_APPLE_REQUIREMENT_PREFIX}")
+        set(WS_MAC_INSTALLER_REQUIREMENT "identifier &quot;${WS_MAC_INSTALLER_BUNDLE_ID}&quot; and ${_WS_MAC_APPLE_REQUIREMENT_PREFIX}")
+        set(WS_MAC_HELPER_REQUIREMENT "anchor apple generic and identifier &quot;${WS_MAC_HELPER_BUNDLE_ID}&quot; and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = ${DEVELOPMENT_TEAM})")
+    endif()
 endif()
 
 # ------------------------------------------------------------------------------

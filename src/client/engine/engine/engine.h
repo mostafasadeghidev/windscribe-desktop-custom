@@ -99,6 +99,7 @@ public:
 
     bool isBlockConnect() const;
     void setBlockConnect(bool isBlockConnect);
+    void setEmployeeAccessAllowed(bool allowed) { employeeAccessAllowed_ = allowed; }
 
     void recordInstall();
     void sendConfirmEmail();
@@ -419,6 +420,8 @@ private:
     QWaitCondition waitConditionForOnHostIPsChanged_;
 
     std::atomic<bool> isBlockConnect_;
+    std::atomic<bool> employeeAccessAllowed_{true};
+    bool loginCanceled_ = false;
     std::atomic<bool> isCleanupFinished_;
     bool isCleanup_ = false;
 

@@ -240,6 +240,7 @@ void PreferencesWindowItem::updateNetworkState(types::NetworkInterface network)
 
 void PreferencesWindowItem::changeTab(PREFERENCES_TAB_TYPE tab)
 {
+    if (tab == TAB_ACCOUNT) tab = TAB_GENERAL;
     if (tab == TAB_GENERAL)
     {
         scrollAreaItem_->setItem(generalWindowItem_);

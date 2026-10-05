@@ -88,15 +88,6 @@ void RobertWindowItem::setFilters(const QVector<api_responses::RobertFilter> &fi
         groups_ << group;
     }
 
-    if (!manageRulesItem_) {
-        PreferenceGroup *manageRulesGroup = new PreferenceGroup(this);
-        manageRulesItem_ = new LinkItem(manageRulesGroup, LinkItem::LinkType::EXTERNAL_LINK);
-        connect(manageRulesItem_, &LinkItem::clicked, this, &RobertWindowItem::onManageRobertRulesClick);
-        manageRulesGroup->addItem(manageRulesItem_);
-        addItem(manageRulesGroup);
-        groups_ << manageRulesGroup;
-    }
-
     setItems(newItems, 1, items().size() - 1);
 
     onLanguageChanged();

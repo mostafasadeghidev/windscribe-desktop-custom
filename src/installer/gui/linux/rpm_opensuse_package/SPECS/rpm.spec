@@ -19,6 +19,7 @@ BuildArch:	x86_64
 Source0:	windscribe.tar
 Conflicts:	windscribe-cli
 
+Requires:	libsecret-1-0
 Requires:	bash
 Requires:	nftables
 Requires:	glibc >= 2.35

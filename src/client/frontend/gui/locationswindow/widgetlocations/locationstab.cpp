@@ -385,13 +385,7 @@ void LocationsTab::updateRibbonVisibility()
         configFooterInfo_->hide();
         staticIPDeviceInfo_->hide();
 
-        if (!isUnlimitedData_) {
-            upgradeBanner_->show();
-            upgradeBanner_->raise();
-            isRibbonVisible_ = true;
-        } else {
-            upgradeBanner_->hide();
-        }
+        upgradeBanner_->hide();
     } else if (curTab_ == LOCATION_TAB_STATIC_IPS_LOCATIONS) {
         configFooterInfo_->hide();
         upgradeBanner_->hide();
@@ -443,7 +437,7 @@ void LocationsTab::onLanguageChanged()
     widgetStaticIpsLocations_->emptyListWidget()->setButton("");
     widgetConfiguredLocations_->emptyListWidget()->setButton("");
     // Set new buttons
-    widgetStaticIpsLocations_->emptyListWidget()->setButton(tr("Add"));
+    widgetStaticIpsLocations_->emptyListWidget()->setButton(QString());
     updateCustomConfigsEmptyListVisibility();
 }
 

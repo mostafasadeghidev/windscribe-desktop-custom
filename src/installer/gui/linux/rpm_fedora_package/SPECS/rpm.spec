@@ -17,6 +17,7 @@ Vendor:		Windscribe Limited
 Source0:	windscribe.tar
 Conflicts:	windscribe-cli
 
+Requires:	libsecret
 Requires:	bash
 Requires:	nftables
 Requires:	glibc >= 2.35

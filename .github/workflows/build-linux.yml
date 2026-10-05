@@ -1,0 +1,51 @@
+name: Build Linux private test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Linux native library cache
+        uses: actions/cache@v4
+        id: linux-libs
+        with:
+          path: build-libs
+          key: linux-build-libs-${{ hashFiles('tools/deps/**', 'tools/vars/**') }}
+
+      - name: Build builder image
+        run: docker build -t ws-builder .
+
+      - name: Install vcpkg
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/wsvcpkg"
+          docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc \
+            'git clone https://github.com/Windscribe/ws-vcpkg-registry.git /tmp/ws-vcpkg-registry && /tmp/ws-vcpkg-registry/install-vcpkg/vcpkg_install.sh /vcpkg'
+
+      - name: Build Linux native libraries
+        if: steps.linux-libs.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          for lib in qt wireguard amneziawg wstunnel; do
+            docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc "cd /w/tools/deps && ./install_$lib"
+          done
+
+      - name: Build app and Debian package
+        shell: bash
+        run: |
+          docker run --rm -e VCPKG_ROOT=/vcpkg -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc 'cd /w/tools && ./build_all --dev-mode'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windscribe-linux-private-test-amd64
+          path: build-exe/*.deb
+          if-no-files-found: error
+          retention-days: 14

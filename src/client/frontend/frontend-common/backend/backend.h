@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <functional>
 #include <wsnet/WSNet.h>
 
 #include "connectstatehelper.h"
@@ -43,6 +44,10 @@ public:
     void setLoginError(wsnet::LoginResult err, const QString &msg);
     bool isLastLoginWithAuthHash() const;
     void logout(bool keepFirewallOn);
+    // GUI employee edition installs these before initialization. All connect paths pass this guard.
+    void setAccessGuards(std::function<bool()> connectGuard, std::function<bool()> loginGuard);
+    void clearLoginCredentials();
+    void setEmployeeAccessAllowed(bool allowed);
     void sendConnect(const LocationID &lid, const types::ConnectionSettings &connectionSettings = types::ConnectionSettings(types::Protocol(), 0, true));
     void sendDisconnect(DISCONNECT_REASON reason = DISCONNECTED_BY_USER);
     // Sets the session-only "ignore SSL errors" state on the engine (pushed to wsnet, never persisted).
@@ -269,6 +274,8 @@ signals:
     void clearWifiHistoryFinished(bool success);
 
 private:
+    std::function<bool()> connectGuard_;
+    std::function<bool()> loginGuard_;
     bool isSavedApiSettingsExists_;
 
     bool bLastLoginWithAuthHash_;
@@ -283,6 +290,7 @@ private:
 
     QThread *threadEngine_;
     Engine *engine_;
+    bool employeeAccessAllowed_ = false;
     bool isCleanupFinished_;
 
     quint32 cmdId_;

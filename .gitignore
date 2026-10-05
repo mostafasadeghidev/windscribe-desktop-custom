@@ -27,3 +27,7 @@ src/client/common/keys/linux/key.pub
 src/client/common/keys/linux/key_pub.txt
 src/installer/windows/signing/code_signing.pfx
 data/provisioning_profile/
+
+# Keep GitHub build and upstream-sync workflows tracked
+!/.github/workflows/build-*.yml
+!/.github/workflows/sync-upstream.yml

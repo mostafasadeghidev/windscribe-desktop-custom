@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.23)
+project(accessgate-tests LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Core Network Test)
+find_package(OpenSSL REQUIRED)
+enable_testing()
+add_executable(accessgate-test accessgate_test.cpp ../accessgate.cpp ../accessgate.h)
+target_link_libraries(accessgate-test PRIVATE Qt6::Core Qt6::Network Qt6::Test OpenSSL::Crypto)
+add_test(NAME accessgate COMMAND accessgate-test)
+
+# Compile the production platform store too; tests use a fake store, never a real user's identity.
+add_library(gate-securestorage-check OBJECT ../securestorage.cpp)
+target_link_libraries(gate-securestorage-check PRIVATE Qt6::Core)
+if(WIN32)
+    target_include_directories(gate-securestorage-check PRIVATE ../../../../client-common)
+    add_executable(gate-securestorage-windows-test
+        securestorage_windows_test.cpp
+        ../securestorage.cpp
+        ../../../../client-common/utils/wincryptutils.cpp)
+    target_include_directories(gate-securestorage-windows-test PRIVATE ../../../../client-common)
+    target_compile_definitions(gate-securestorage-windows-test PRIVATE WS_PRODUCT_NAME="Windscribe")
+    target_link_libraries(gate-securestorage-windows-test PRIVATE Qt6::Core Qt6::Network Qt6::Test crypt32)
+    add_test(NAME securestorage-windows COMMAND gate-securestorage-windows-test)
+elseif(APPLE)
+    target_link_libraries(gate-securestorage-check PRIVATE "-framework Security")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET GLOBAL libsecret-1)
+    target_link_libraries(gate-securestorage-check PRIVATE PkgConfig::LIBSECRET)
+endif()

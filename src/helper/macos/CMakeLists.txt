@@ -99,17 +99,25 @@ target_link_libraries(${WS_MAC_HELPER_BUNDLE_ID}
                       "-sectcreate __TEXT __launchd_plist ${CMAKE_CURRENT_BINARY_DIR}/helper-launchd.plist.configured"
 )
 
-# Sign helper immediately after building (required for SMJobBless)
-add_custom_command(TARGET ${WS_MAC_HELPER_BUNDLE_ID} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Signing helper..."
-    COMMAND ${CODESIGN_EXECUTABLE}
-            --force
-            --options runtime
-            --timestamp
-            --sign "Developer ID Application"
-            $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
-    COMMAND ${CODESIGN_EXECUTABLE} -v $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
-)
+# Sign helper immediately after building (required for SMJobBless).
+if(DEV_MODE)
+    add_custom_command(TARGET ${WS_MAC_HELPER_BUNDLE_ID} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Ad-hoc signing helper for local testing..."
+        COMMAND ${CODESIGN_EXECUTABLE} --force --sign - $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
+        COMMAND ${CODESIGN_EXECUTABLE} --verify $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
+    )
+else()
+    add_custom_command(TARGET ${WS_MAC_HELPER_BUNDLE_ID} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Signing helper..."
+        COMMAND ${CODESIGN_EXECUTABLE}
+                --force
+                --options runtime
+                --timestamp
+                --sign "Developer ID Application"
+                $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
+        COMMAND ${CODESIGN_EXECUTABLE} -v $<TARGET_FILE:${WS_MAC_HELPER_BUNDLE_ID}>
+    )
+endif()
 
 target_include_directories(${WS_MAC_HELPER_BUNDLE_ID} PRIVATE
                            ../../client/client-common

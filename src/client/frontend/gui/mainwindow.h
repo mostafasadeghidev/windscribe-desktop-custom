@@ -8,6 +8,7 @@
 #include "api_responses/checkupdate.h"
 #include "api_responses/robertfilter.h"
 #include "backend/backend.h"
+#include "accessgate/accessgate.h"
 #include "backend/notificationscontroller.h"
 #include "blockconnect.h"
 #include "dialogs/advancedparametersdialog.h"
@@ -313,6 +314,15 @@ private:
     void gotoExitWindow();
     void collapsePreferences();
     void selectLocation(const LocationID &lid, const types::Protocol &protocol, uint port = 0);
+
+    AccessGate *accessGate_;
+    QString gateWsUsername_;
+    QString gateWsPassword_;
+    bool gateLockInProgress_ = false;
+    bool gateCanConnect();
+    void submitGateTwoFactor(const QString &code);
+    void lockAccess(const QString &message);
+    void cancelGateLogin();
 
     Backend *backend_;
     LocalIPCServer *localIpcServer_;

@@ -45,60 +45,22 @@ bool BottomInfoItem::isUpgradeWidgetVisible() const
 
 void BottomInfoItem::setDataRemaining(qint64 bytesUsed, qint64 bytesMax)
 {
-    if (bytesUsed == -1 || bytesMax == -1)
-    {
-        SAFE_DELETE(upgradeWidgetItem_);
-    }
-    else
-    {
-        if (upgradeWidgetItem_ == NULL)
-        {
-            upgradeWidgetItem_ = new UpgradeWidget::UpgradeWidgetItem(this);
-            connect(upgradeWidgetItem_, &UpgradeWidget::UpgradeWidgetItem::buttonClick, this, &BottomInfoItem::upgradeClick);
-            upgradeWidgetItem_->setDataRemaining(bytesUsed, bytesMax);
-        }
-        else
-        {
-            upgradeWidgetItem_->setDataRemaining(bytesUsed, bytesMax);
-        }
-    }
-
+    Q_UNUSED(bytesUsed); Q_UNUSED(bytesMax);
+    SAFE_DELETE(upgradeWidgetItem_);
     updateDisplay();
 }
 
 void BottomInfoItem::setDaysRemaining(int daysLeft)
 {
-    if (daysLeft == -1)
-    {
-        SAFE_DELETE(upgradeWidgetItem_);
-    }
-    else
-    {
-        if (upgradeWidgetItem_ == NULL)
-        {
-            upgradeWidgetItem_ = new UpgradeWidget::UpgradeWidgetItem(this);
-            connect(upgradeWidgetItem_, &UpgradeWidget::UpgradeWidgetItem::buttonClick, this, &BottomInfoItem::renewClick);
-        }
-        upgradeWidgetItem_->setDaysRemaining(daysLeft);
-    }
+    Q_UNUSED(daysLeft);
+    SAFE_DELETE(upgradeWidgetItem_);
     updateDisplay();
 }
 
 void BottomInfoItem::setExtConfigMode(bool isExtConfigMode)
 {
-    if (!isExtConfigMode)
-    {
-        SAFE_DELETE(upgradeWidgetItem_);
-    }
-    else
-    {
-        if (upgradeWidgetItem_ == NULL)
-        {
-            upgradeWidgetItem_ = new UpgradeWidget::UpgradeWidgetItem(this);
-            connect(upgradeWidgetItem_, &UpgradeWidget::UpgradeWidgetItem::buttonClick, this, &BottomInfoItem::loginClick);
-        }
-        upgradeWidgetItem_->setExtConfigMode(isExtConfigMode);
-    }
+    Q_UNUSED(isExtConfigMode);
+    SAFE_DELETE(upgradeWidgetItem_);
     updateDisplay();
 }
 

@@ -133,11 +133,11 @@ if(BUILD_BOOTSTRAP)
         # Copy installer.exe to bootstrap directory with version name
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CMAKE_BINARY_DIR}/src/installer/${INSTALLER_TYPE}/windows/installer/${WS_WIN_INSTALLER_TARGET}.exe"
-                "${BUILD_BOOTSTRAP_FILES}/${WS_WIN_RESOLVED_NAME}.exe"
+                "${BUILD_BOOTSTRAP_FILES}/${WINDSCRIBE_INSTALLER_NAME}"
 
         # Create bootstrap 7z archive
         COMMAND ${CMAKE_COMMAND} -E remove -f "${WINDSCRIBE_INSTALLER_7Z}"
-        COMMAND ${7ZIP_EXECUTABLE} a "${WINDSCRIBE_INSTALLER_7Z}" "${BUILD_BOOTSTRAP_FILES}/*" -y -bso0 -bsp0
+        COMMAND ${7ZIP_EXECUTABLE} a "${WINDSCRIBE_INSTALLER_7Z}" "${BUILD_BOOTSTRAP_FILES}/${WINDSCRIBE_INSTALLER_NAME}" -y -bso0 -bsp0
     )
 
     add_custom_target(prep-bootstrap DEPENDS ${WINDSCRIBE_INSTALLER_7Z})

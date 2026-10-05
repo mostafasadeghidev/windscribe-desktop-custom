@@ -131,6 +131,7 @@ void TwoFactorAuthWindowItem::clearCurrentCredentials()
 {
     savedUsername_.clear();
     savedPassword_.clear();
+    codeEntry_->clearActiveState();
 }
 
 void TwoFactorAuthWindowItem::setCurrentCredentials(const QString &username,

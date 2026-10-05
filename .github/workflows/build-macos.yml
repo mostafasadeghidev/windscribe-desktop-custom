@@ -1,0 +1,48 @@
+name: Build macOS private test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: brew install libtool automake go
+
+      - name: Install Python requirements
+        run: python -m pip install -r tools/requirements.txt
+
+      - name: Install vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/Windscribe/ws-vcpkg-registry.git "$RUNNER_TEMP/ws-vcpkg-registry"
+          bash "$RUNNER_TEMP/ws-vcpkg-registry/install-vcpkg/vcpkg_install.sh" "$RUNNER_TEMP/wsvcpkg"
+          echo "VCPKG_ROOT=$RUNNER_TEMP/wsvcpkg" >> "$GITHUB_ENV"
+
+      - name: Build macOS native libraries
+        shell: bash
+        run: |
+          bash ./tools/deps/install_wireguard
+          bash ./tools/deps/install_amneziawg
+          bash ./tools/deps/install_wstunnel
+
+      - name: Build app and test installer
+        run: python tools/build_all.py --dev-mode
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windscribe-macos-private-test-${{ runner.arch }}
+          path: build-exe/*.dmg
+          if-no-files-found: error
+          retention-days: 14

@@ -76,7 +76,7 @@ def InstallDependency():
     # Prepare output.
     temp_dir = iutl.PrepareTempDirectory(dep_name)
     with utl.PushDir(temp_dir):
-        iutl.RunCommand(["git", "clone", DEP_URL, "."])
+        iutl.RunCommand(["git", "clone", "--depth", "1", "--branch", dep_version_str, DEP_URL, "."])
         iutl.RunCommand(["git", "checkout", "tags/{}".format(dep_version_str)])
         iutl.VerifyGitCommit(DEP_TITLE, dep_commit_str)
     # Build the dependency.

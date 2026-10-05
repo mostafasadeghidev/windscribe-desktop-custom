@@ -109,6 +109,14 @@ MainWindow::MainWindow() :
     unsigned long guiPid = Utils::getCurrentPid();
     qCDebug(LOG_BASIC) << "GUI pid: " << guiPid;
     backend_ = new Backend(this);
+    accessGate_ = new AccessGate(this);
+    backend_->setEmployeeAccessAllowed(false);
+    backend_->setAccessGuards([this] { return gateCanConnect(); }, [this] {
+        if (gateLockInProgress_) return false;
+        if (!accessGate_->completeLogin()) return false;
+        backend_->setEmployeeAccessAllowed(true);
+        return true;
+    });
 
 #ifdef Q_OS_MACOS
     WidgetUtils_mac::allowMinimizeForFramelessWindow(this);
@@ -202,6 +210,25 @@ MainWindow::MainWindow() :
     connect(mainWindowController_->getNewsFeedWindow(), &NewsFeedWindow::NewsFeedWindowItem::messageRead, &notificationsController_, &NotificationsController::setNotificationRead);
     mainWindowController_->getNewsFeedWindow()->setMessages( notificationsController_.messages(), notificationsController_.shownIds());
 
+    connect(accessGate_, &AccessGate::loginSucceeded, this, [this](const QString &user, const QString &password) {
+        gateWsUsername_ = user;
+        gateWsPassword_ = password;
+        mainWindowController_->getLoginWindow()->resetState();
+        auto window = mainWindowController_->getTwoFactorAuthWindow();
+        window->clearCurrentCredentials();
+        window->resetState();
+        window->setErrorMessage(TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_EMPTY);
+        window->setLoginMode(true);
+        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_TWO_FACTOR_AUTH);
+    });
+    connect(accessGate_, &AccessGate::loginFailed, this, [this](const QString &message) {
+        gotoLoginWindow();
+        mainWindowController_->getLoginWindow()->setErrorMessage(LoginWindow::ERR_MSG_SOME_ERROR, message);
+    });
+    connect(accessGate_, &AccessGate::accessRevoked, this, [this](AccessGate::LockReason reason) {
+        lockAccess(AccessGate::lockMessage(reason));
+    });
+
     // init window signals
     connect(mainWindowController_->getInitWindow(), &LoginWindow::InitWindowItem::abortClicked, this, &MainWindow::onAbortInitialization);
 
@@ -219,7 +246,8 @@ MainWindow::MainWindow() :
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::minimizeClick, this, &MainWindow::onMinimizeClick);
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::closeClick, this, &MainWindow::onCloseClick);
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::backClick, this, [this] {
-        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_WELCOME);
+        cancelGateLogin();
+        gotoLoginWindow();
     });
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::twoFactorAuthClick, this, &MainWindow::onLoginTwoFactorAuthWindowClick);
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::firewallTurnOffClick, this, &MainWindow::onLoginFirewallTurnOffClick);
@@ -230,7 +258,8 @@ MainWindow::MainWindow() :
     connect(mainWindowController_->getSignupWindow(), &LoginWindow::SignupWindowItem::minimizeClick, this, &MainWindow::onMinimizeClick);
     connect(mainWindowController_->getSignupWindow(), &LoginWindow::SignupWindowItem::closeClick, this, &MainWindow::onCloseClick);
     connect(mainWindowController_->getSignupWindow(), &LoginWindow::SignupWindowItem::backClick, this, [this] {
-        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_WELCOME);
+        cancelGateLogin();
+        gotoLoginWindow();
     });
     connect(mainWindowController_->getSignupWindow(), &LoginWindow::SignupWindowItem::signupClick, this, &MainWindow::onSignupClick);
 
@@ -308,11 +337,17 @@ MainWindow::MainWindow() :
 
     // 2FA window signals
     connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::addClick, this, &MainWindow::onTwoFactorAuthWindowButtonAddClick);
-    connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::loginClick, this, &MainWindow::onLoginClick);
+    connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::loginClick, this,
+            [this](const QString &, const QString &, const QString &code) { submitGateTwoFactor(code); });
     connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::escapeClick, this, [this] {
+        cancelGateLogin();
         gotoLoginWindow();
     });
-    connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::closeClick, this, &MainWindow::onCloseClick);
+    connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::closeClick, this, [this] {
+        cancelGateLogin();
+        gotoLoginWindow();
+        onCloseClick();
+    });
     connect(mainWindowController_->getTwoFactorAuthWindow(), &TwoFactorAuthWindow::TwoFactorAuthWindowItem::minimizeClick, this, &MainWindow::onMinimizeClick);
 
     // bottom window signals
@@ -874,6 +909,11 @@ void MainWindow::onMinimizeClick()
 
 void MainWindow::onCloseClick()
 {
+    if (accessGate_->hasPendingLogin() || (!accessGate_->hasSession() &&
+        mainWindowController_->currentWindow() == MainWindowController::WINDOW_ID_LOGGING_IN)) {
+        cancelGateLogin();
+        gotoLoginWindow();
+    }
     if (backend_->getPreferences()->isMinimizeAndCloseToTray()) {
         minimizeToTray();
     } else {
@@ -889,40 +929,20 @@ void MainWindow::onAbortInitialization()
 
 void MainWindow::onLoginClick(const QString &username, const QString &password, const QString &code2fa)
 {
-    // Do nothing if we are already logging in
-    if (backend_->currentLoginState() == LOGIN_STATE_LOGGING_IN) {
-        return;
-    }
-
-    if (username.contains("@")) {
-        mainWindowController_->getLoginWindow()->setErrorMessage(LoginWindow::ERR_MSG_USERNAME_IS_EMAIL, QString());
-        return;
-    }
-    mainWindowController_->getTwoFactorAuthWindow()->setCurrentCredentials(username, password);
-    mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
+    Q_UNUSED(code2fa);
+    if (gateLockInProgress_ || backend_->currentLoginState() == LOGIN_STATE_LOGGING_IN || accessGate_->hasSession()) return;
+    mainWindowController_->getLoggingInWindow()->setMessage(tr("Checking employee access..."));
     mainWindowController_->getLoggingInWindow()->setAdditionalMessage("");
     mainWindowController_->getLoggingInWindow()->startAnimation();
     mainWindowController_->getLoggingInWindow()->hideCaptcha();
     mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
-
-    mainWindowController_->getConnectWindow()->setCustomConfigMode(false);
-
-    isLastCallWasSignup_ = false;
-    backend_->login(username, password, code2fa);
+    accessGate_->login(username, password);
 }
 
 void MainWindow::onSignupClick(const QString &username, const QString &password, const QString &email, const QString &voucherCode, const QString &referringUsername)
 {
-    mainWindowController_->getLoggingInWindow()->setMessage(tr("Creating your account..."));
-    mainWindowController_->getLoggingInWindow()->setAdditionalMessage("");
-    mainWindowController_->getLoggingInWindow()->startAnimation();
-    mainWindowController_->getLoggingInWindow()->hideCaptcha();
-    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
-
-    mainWindowController_->getConnectWindow()->setCustomConfigMode(false);
-
-    isLastCallWasSignup_ = true;
-    backend_->signup(username, password, referringUsername, email, voucherCode);
+    Q_UNUSED(username); Q_UNUSED(password); Q_UNUSED(email); Q_UNUSED(voucherCode); Q_UNUSED(referringUsername);
+    gotoLoginWindow();
 }
 
 void MainWindow::onWelcomePreferencesClick()
@@ -939,7 +959,7 @@ void MainWindow::onWelcomeHaveAccountYesClick()
 
 void MainWindow::onWelcomeCreateAccountClick()
 {
-    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_SIGNUP);
+    gotoLoginWindow();
 }
 
 void MainWindow::onWelcomeEmergencyWindowClick()
@@ -949,15 +969,11 @@ void MainWindow::onWelcomeEmergencyWindowClick()
 
 void MainWindow::onWelcomeExternalConfigWindowClick()
 {
-    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_EXTERNAL_CONFIG);
+    gotoLoginWindow();
 }
 void MainWindow::onLoginTwoFactorAuthWindowClick(const QString &username, const QString &password)
 {
-    mainWindowController_->getTwoFactorAuthWindow()->setErrorMessage(
-        TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_EMPTY);
-    mainWindowController_->getTwoFactorAuthWindow()->setLoginMode(false);
-    mainWindowController_->getTwoFactorAuthWindow()->setCurrentCredentials(username, password);
-    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_TWO_FACTOR_AUTH);
+    onLoginClick(username, password, QString());
 }
 
 void MainWindow::onConnectWindowConnectClick()
@@ -1003,13 +1019,7 @@ void MainWindow::onLoginFirewallTurnOffClick()
 void MainWindow::onCaptchaBackClicked()
 {
     mainWindowController_->getLoggingInWindow()->hideCaptcha();
-    if (!isLastCallWasSignup_) {
-        logoutReason_ = LOGOUT_GO_TO_LOGIN;
-        backend_->logout(false);
-        gotoLoginWindow();
-    } else {
-        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_SIGNUP);
-    }
+    lockAccess(QString());
 }
 
 void MainWindow::onCaptchaResolved(const QString &captchaSolution, const std::vector<float> &captchaTrailX, const std::vector<float> &captchaTrailY)
@@ -1352,17 +1362,17 @@ void MainWindow::onSendDebugLogClick()
 
 void MainWindow::onPreferencesManageAccountClick()
 {
-    backend_->getWebSessionTokenForManageAccount();
+    // Employee accounts are managed by the administrator.
 }
 
 void MainWindow::onPreferencesAddEmailButtonClick()
 {
-    backend_->getWebSessionTokenForAddEmail();
+    // Employee accounts are managed by the administrator.
 }
 
 void MainWindow::onPreferencesManageRobertRulesClick()
 {
-    backend_->getWebSessionTokenForManageRobertRules();
+    // Browser account access is reserved for the administrator.
 }
 
 void MainWindow::onPreferencesQuitAppClick()
@@ -1472,6 +1482,7 @@ void MainWindow::onPreferencesReportErrorToUser(const QString &title, const QStr
 
 void MainWindow::onEmergencyConnectClick()
 {
+    if (!gateCanConnect()) return;
     backend_->emergencyConnectClick();
 }
 
@@ -1571,12 +1582,7 @@ void MainWindow::onUpgradeAccountCancel()
 
 void MainWindow::onLogoutWindowAccept()
 {
-    setCursor(Qt::WaitCursor);
-    setEnabled(false);
-    logoutReason_ = LOGOUT_FROM_MENU;
-    isExitingFromPreferences_ = false;
-    selectedLocation_->clear();
-    backend_->logout(false);
+    lockAccess(QString());
 }
 
 void MainWindow::onExitWindowAccept()
@@ -1735,29 +1741,17 @@ void MainWindow::onBackendInitFinished(INIT_STATE initState)
             onPreferencesShareProxyGatewayChanged(p->shareProxyGateway());
         }
 
-        QString autoLoginUsername;
-        QString autoLoginPassword;
-
-        if (backend_->haveAutoLoginCredentials(autoLoginUsername, autoLoginPassword)) {
-            mainWindowController_->getInitWindow()->startSlideAnimation();
-            gotoLoginWindow();
-            // Give the UI time to finish transitioning (adjusting window height, etc.) in the
-            // gotoLoginWindow() call before we attempt login.  Otherwise, the screen height
-            // may be incorrect if the login fails (e.g. due to invalid credentials).
-            QTimer::singleShot(150, this, [this, autoLoginUsername, autoLoginPassword]() {
-                onLoginClick(autoLoginUsername, autoLoginPassword, QString());
-            });
-        } else if (backend_->isCanLoginWithAuthHash()) {
-            if (!backend_->isSavedApiSettingsExists()) {
-                mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
-                mainWindowController_->getLoggingInWindow()->hideCaptcha();
-                mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
-            }
+        if (accessGate_->hasSession() && accessGate_->isWithinOfflineGrace() && backend_->isCanLoginWithAuthHash()) {
+            accessGate_->startPeriodicChecks();
+            mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
+            mainWindowController_->getLoggingInWindow()->hideCaptcha();
+            mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
             isLastCallWasSignup_ = false;
             backend_->loginWithAuthHash();
         } else {
             mainWindowController_->getInitWindow()->startSlideAnimation();
-            gotoWelcomeWindow();
+            const bool expired = accessGate_->hasSession() && !accessGate_->isWithinOfflineGrace();
+            lockAccess(expired ? AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong) : QString());
         }
 
         updateConnectWindowStateProtocolPortDisplay();
@@ -1817,6 +1811,9 @@ void MainWindow::onBackendCaptchaRequired(bool /*isAsciiCaptcha*/, const QString
 
 void MainWindow::onBackendLoginFinished()
 {
+    gateWsUsername_.clear();
+    gateWsPassword_.clear();
+    accessGate_->startPeriodicChecks();
     mainWindowController_->getPreferencesWindow()->setLoggedIn(true);
     mainWindowController_->getTwoFactorAuthWindow()->clearCurrentCredentials();
     trayIcon_->setLoggedIn(true);
@@ -1907,98 +1904,21 @@ void MainWindow::onBackendTryingBackupEndpoint()
 
 void MainWindow::onBackendLoginError(wsnet::LoginResult loginError, const QString &errorMessage)
 {
-    // This error is special in that we can show the prompt any time
-    if (loginError == wsnet::LoginResult::kSslError) {
-        GeneralMessageController::instance().showMessageWithRedAccept(
-            "WARNING_WHITE",
-            tr("SSL Error"),
-            tr("SSL requests may be intercepted on your network. Ignoring SSL errors disables TLS certificate validation for this session: anyone able to intercept your traffic can then impersonate Windscribe and read or alter your data, and we can't guarantee your security while it's on. Ignore SSL errors?"),
-            GeneralMessageController::tr(GeneralMessageController::kYes),
-            GeneralMessageController::tr(GeneralMessageController::kNo),
-            "",
-            [this](bool b) {
-                if (!isLastCallWasSignup_) {
-                    backend_->setIgnoreSslErrors(true);
-                    if (!isLoginOkAndConnectWindowVisible_) {
-                        mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
-                        mainWindowController_->getLoggingInWindow()->setAdditionalMessage("");
-                        mainWindowController_->getLoggingInWindow()->hideCaptcha();
-                        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
-                        backend_->loginWithLastLoginSettings();
-                    }
-                } else {
-                    mainWindowController_->getSignupWindow()->setErrorMessage(LoginWindow::ERR_MSG_NO_API_CONNECTIVITY);
-                    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_SIGNUP);
-                }
-            },
-            [this](bool b) {
-                if (!isLastCallWasSignup_) {
-                    if (!isLoginOkAndConnectWindowVisible_) {
-                        mainWindowController_->getLoginWindow()->setErrorMessage(LoginWindow::ERR_MSG_NO_API_CONNECTIVITY);
-                        gotoLoginWindow();
-                    }
-                } else {
-                    mainWindowController_->getSignupWindow()->setErrorMessage(LoginWindow::ERR_MSG_NO_API_CONNECTIVITY);
-                    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_SIGNUP);
-                }
-            });
-        return;
-    }
-
+    if (gateLockInProgress_) return;
     if (isLoginOkAndConnectWindowVisible_) {
-        // If we have already activated at some point, we never log out regardless of API errors,
-        // except for messages indicating the session is no longer valid
-        if (loginError == wsnet::LoginResult::kSessionInvalid) {
-            onBackendSessionDeleted();
-        } else {
-            qCWarning(LOG_BASIC) << "Session error while logged in: " << (int)loginError;
-        }
+        if (loginError == wsnet::LoginResult::kSessionInvalid) onBackendSessionDeleted();
         return;
     }
-
-    if (loginError == wsnet::LoginResult::kBadUsername) {
-        if (backend_->isLastLoginWithAuthHash()) {
-            qCCritical(LOG_BASIC) << "Got 'bad username' with auth hash login";
-            WS_ASSERT(false);
-        } else {
-            loginAttemptsController_.pushIncorrectLogin();
-            mainWindowController_->getLoginWindow()->setErrorMessage(loginAttemptsController_.currentMessage(), QString());
-            // It's possible we were passed invalid credentials by the CLI or installer auto-login.  Ensure we transition
-            // the user to the username/password entry screen so they can see the error message and attempt a manual login.
-            gotoLoginWindow();
-        }
-    } else if (loginError == wsnet::LoginResult::kBadCode2fa || loginError == wsnet::LoginResult::kMissingCode2fa) {
-        const bool is_missing_code2fa = (loginError == wsnet::LoginResult::kMissingCode2fa);
+    if (accessGate_->hasPendingLogin() &&
+        (loginError == wsnet::LoginResult::kBadCode2fa || loginError == wsnet::LoginResult::kMissingCode2fa)) {
         mainWindowController_->getTwoFactorAuthWindow()->setErrorMessage(
-            is_missing_code2fa ? TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_NO_CODE
-                               : TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_INVALID_CODE);
-        mainWindowController_->getTwoFactorAuthWindow()->setLoginMode(true);
+            loginError == wsnet::LoginResult::kMissingCode2fa ? TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_NO_CODE
+                                                           : TwoFactorAuthWindow::TwoFactorAuthWindowItem::ERR_MSG_INVALID_CODE);
         mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_TWO_FACTOR_AUTH);
         return;
-    } else if (loginError == wsnet::LoginResult::kNoConnectivity) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_NO_INTERNET_CONNECTIVITY);
-    } else if (loginError == wsnet::LoginResult::kNoApiConnectivity) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_NO_API_CONNECTIVITY);
-    } else if (loginError == wsnet::LoginResult::kIncorrectJson) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_INVALID_API_RESPONSE);
-    } else if (loginError == wsnet::LoginResult::kAccountDisabled) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_ACCOUNT_DISABLED, errorMessage);
-    } else if (loginError == wsnet::LoginResult::kSessionInvalid) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_SESSION_EXPIRED);
-    } else if (loginError == wsnet::LoginResult::kRateLimited) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_RATE_LIMITED);
-    } else if (loginError == wsnet::LoginResult::kInvalidSecurityToken) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_INVALID_SECURITY_TOKEN, errorMessage);
-    } else if (loginError == wsnet::LoginResult::kSomeError) {
-        setLoginOrSignupWindowError(LoginWindow::ERR_MSG_SOME_ERROR, errorMessage);
     }
-
-    mainWindowController_->getWelcomeWindow()->setEmergencyConnectState(false);
-    if (!isLastCallWasSignup_) {
-        gotoLoginWindow();
-    } else {
-        mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_SIGNUP);
-    }
+    Q_UNUSED(errorMessage);
+    lockAccess(tr("VPN sign-in failed. Check your connection or contact your administrator, then sign in again."));
 }
 
 void MainWindow::onBackendSessionStatusChanged(const api_responses::SessionStatus &sessionStatus)
@@ -2359,6 +2279,13 @@ void MainWindow::onSystemExtensionAvailabilityChanged(bool available)
 
 void MainWindow::onBackendLogoutFinished()
 {
+    gateLockInProgress_ = false;
+    backend_->setEmployeeAccessAllowed(false);
+    accessGate_->clearSession();
+    gateWsUsername_.clear();
+    gateWsPassword_.clear();
+    mainWindowController_->getTwoFactorAuthWindow()->clearCurrentCredentials();
+    mainWindowController_->getLoginWindow()->resetState();
     selectedLocation_->clear();
     mainWindowController_->getConnectWindow()->updateLocationInfo(selectedLocation_->firstName(), selectedLocation_->secondName(),
                                                                   selectedLocation_->countryCode(), selectedLocation_->pingTime(),
@@ -2371,7 +2298,7 @@ void MainWindow::onBackendLogoutFinished()
     backend_->getPreferencesHelper()->setIsExternalConfigMode(false);
     setDataRemaining(-1, -1);
 
-    bool isGotoLogin = false;
+    bool isGotoLogin = true;
 
     if (logoutReason_ == LOGOUT_FROM_MENU) {
         mainWindowController_->getLoginWindow()->resetState();
@@ -2606,13 +2533,7 @@ void MainWindow::onBackendRequestCustomOvpnConfigPrivKeyPassword()
 
 void MainWindow::onBackendSessionDeleted()
 {
-    qCInfo(LOG_BASIC) << "Handle deleted session";
-
-    setCursor(Qt::WaitCursor);
-    setEnabled(false);
-    logoutReason_ = LOGOUT_SESSION_EXPIRED;
-    selectedLocation_->clear();
-    backend_->logout(true);
+    lockAccess(tr("Your VPN session expired. Please sign in again."));
 }
 
 void MainWindow::onBackendTestTunnelResult(bool success)
@@ -3001,10 +2922,7 @@ void MainWindow::onBackendUpdateVersionChanged(uint progressPercent, UPDATE_VERS
 
 void MainWindow::openBrowserToMyAccountWithToken(const QString &tempSessionToken)
 {
-    QString getUrl = QString("https://%1/myaccount?temp_session=%2")
-                        .arg(HardcodedSettings::instance().windscribeServerUrl())
-                        .arg(tempSessionToken);
-    QDesktopServices::openUrl(QUrl(getUrl));
+    Q_UNUSED(tempSessionToken);
 }
 
 void MainWindow::onBackendWebSessionTokenForManageAccount(const QString &tempSessionToken)
@@ -3025,11 +2943,8 @@ void MainWindow::onBackendWebSessionTokenForAddEmail(const QString &tempSessionT
 
 void MainWindow::onBackendWebSessionTokenForManageRobertRules(const QString &tempSessionToken)
 {
+    Q_UNUSED(tempSessionToken);
     mainWindowController_->getPreferencesWindow()->setWebSessionCompleted();
-    QString getUrl = QString("https://%1/myaccount?temp_session=%2#robertrules")
-                        .arg(HardcodedSettings::instance().windscribeServerUrl())
-                        .arg(tempSessionToken);
-    QDesktopServices::openUrl(QUrl(getUrl));
 }
 
 void MainWindow::onBackendEngineCrash()
@@ -3786,16 +3701,18 @@ void MainWindow::setVariablesToInitState()
 
 void MainWindow::openStaticIpExternalWindow()
 {
-    QDesktopServices::openUrl(QUrl( QString("https://%1/staticips?cpid=app_windows").arg(HardcodedSettings::instance().windscribeServerUrl())));
+    // Purchasing account features is unavailable in the employee edition.
 }
 
 void MainWindow::openUpgradeExternalWindow()
 {
-    QDesktopServices::openUrl(QUrl( QString("https://%1/upgrade?pcpid=desktop_upgrade").arg(HardcodedSettings::instance().windscribeServerUrl())));
+    // Purchasing account features is unavailable in the employee edition.
 }
 
 void MainWindow::gotoLoginWindow()
 {
+    cancelGateLogin();
+    mainWindowController_->getLoginWindow()->setEmployeeUsername(accessGate_->username());
     setFirewallTurnOffButtonVisibility(backend_->isFirewallEnabled());
     // curWindow_ can lag during a transition; redirecting an already-dismissed alert would drop this window change entirely.
     if ((mainWindowController_->currentWindow() == MainWindowController::WINDOW_ID_GENERAL_MESSAGE ||
@@ -4082,8 +3999,7 @@ void MainWindow::onLocationPermissionUpdated()
 
 void MainWindow::gotoWelcomeWindow()
 {
-    setFirewallTurnOffButtonVisibility(backend_->isFirewallEnabled());
-    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_WELCOME);
+    gotoLoginWindow();
 }
 
 void MainWindow::checkNotificationEnabled()
@@ -4286,4 +4202,68 @@ void MainWindow::setLoginOrSignupWindowError(LoginWindow::ERROR_MESSAGE_TYPE err
     } else {
         mainWindowController_->getLoginWindow()->setErrorMessage(errorMessageType, errorMessage);
     }
+}
+
+
+bool MainWindow::gateCanConnect()
+{
+    if (gateLockInProgress_) return false;
+    if (!accessGate_->hasSession() || !accessGate_->isWithinOfflineGrace()) {
+        lockAccess(AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong));
+        return false;
+    }
+    accessGate_->checkNow();
+    return true;
+}
+
+void MainWindow::submitGateTwoFactor(const QString &code)
+{
+    if (gateLockInProgress_ || backend_->currentLoginState() == LOGIN_STATE_LOGGING_IN) return;
+    if (!accessGate_->hasPendingLogin() || !accessGate_->isWithinOfflineGrace() || gateWsUsername_.isEmpty() || gateWsPassword_.isEmpty()) {
+        lockAccess(AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong));
+        return;
+    }
+    mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
+    mainWindowController_->getLoggingInWindow()->setAdditionalMessage("");
+    mainWindowController_->getLoggingInWindow()->startAnimation();
+    mainWindowController_->getLoggingInWindow()->hideCaptcha();
+    mainWindowController_->changeWindow(MainWindowController::WINDOW_ID_LOGGING_IN);
+    mainWindowController_->getConnectWindow()->setCustomConfigMode(false);
+    isLastCallWasSignup_ = false;
+    backend_->login(gateWsUsername_, gateWsPassword_, code);
+}
+
+void MainWindow::cancelGateLogin()
+{
+    const bool wasPending = accessGate_->hasPendingLogin();
+    accessGate_->cancelPendingLogin();
+    gateWsUsername_.clear();
+    gateWsPassword_.clear();
+    backend_->clearLoginCredentials();
+    mainWindowController_->getTwoFactorAuthWindow()->clearCurrentCredentials();
+    mainWindowController_->getTwoFactorAuthWindow()->resetState();
+    if (wasPending && !gateLockInProgress_ && backend_->currentLoginState() == LOGIN_STATE_LOGGING_IN) {
+        lockAccess(QString());
+    }
+}
+
+void MainWindow::lockAccess(const QString &message)
+{
+    if (gateLockInProgress_) return;
+    gateLockInProgress_ = true;
+    backend_->setEmployeeAccessAllowed(false);
+    accessGate_->clearSession();
+    cancelGateLogin();
+    setCursor(Qt::WaitCursor);
+    setEnabled(false);
+    logoutReason_ = LOGOUT_WITH_MESSAGE;
+    logoutMessageType_ = message.isEmpty() ? LoginWindow::ERR_MSG_EMPTY : LoginWindow::ERR_MSG_SOME_ERROR;
+    logoutErrorMessage_ = message;
+    isExitingFromPreferences_ = false;
+    selectedLocation_->clear();
+    if (!backend_->isEmergencyDisconnected()) backend_->emergencyDisconnectClick();
+    backend_->stopProxySharing();
+    backend_->stopWifiSharing();
+    // Engine::logout disconnects first, disables the firewall, and removes VPN configs and API resources.
+    backend_->logout(false);
 }

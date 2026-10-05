@@ -106,9 +106,9 @@ if(BUILD_DEB)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${INSTALLER_LINUX_DIR}/debian_package/DEBIAN"
                 "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN"
-        COMMAND chmod +x "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/preinst"
-        COMMAND chmod +x "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/postinst"
-        COMMAND chmod +x "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/prerm"
+        COMMAND chmod 0755 "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/preinst"
+        COMMAND chmod 0755 "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/postinst"
+        COMMAND chmod 0755 "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/prerm"
     )
 
     # Update version and architecture in control file
@@ -134,6 +134,26 @@ if(BUILD_DEB)
     )
 
     linux_copy_files("${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}" package-deb)
+
+    # Normalize permissions after copying from the Windows-hosted source tree.
+    # NTFS presents source files as world-writable/executable in the Linux build container.
+    add_custom_command(TARGET package-deb POST_BUILD
+        COMMAND find "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}" -type f -exec chmod 0644 {} +
+        COMMAND find "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}${WS_LINUX_INSTALL_DIR}/scripts" -type f -exec chmod 0755 {} +
+        COMMAND chmod 0755
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}${WS_LINUX_INSTALL_DIR}/${WS_APP_EXECUTABLE_NAME}"
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}${WS_LINUX_INSTALL_DIR}/${WS_CLI_EXECUTABLE_NAME}"
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}${WS_LINUX_INSTALL_DIR}/helper"
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/preinst"
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/postinst"
+                "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}/DEBIAN/prerm"
+    )
+    foreach(_helper ${WS_BUNDLED_HELPER_NAMES})
+        add_custom_command(TARGET package-deb POST_BUILD
+            COMMAND chmod 0755
+                    "${DEB_PACKAGE_DIR}/${DEB_PACKAGE_NAME}${WS_LINUX_INSTALL_DIR}/${WS_PRODUCT_NAME_LOWER}${_helper}"
+        )
+    endforeach()
 
     # Build DEB package
     find_program(DPKG_DEB_EXECUTABLE dpkg-deb)

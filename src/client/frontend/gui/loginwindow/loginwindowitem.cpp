@@ -121,11 +121,16 @@ LoginWindowItem::LoginWindowItem(QGraphicsObject *parent, PreferencesHelper *pre
     passwordEntry_->setOpacityByFactor(OPACITY_FULL);
     hashEntry_->setOpacityByFactor(OPACITY_FULL);
 
-    twoFactorAuthButton_->quickShow();
-    forgotPassButton_->quickShow();
-    standardLoginButton_->quickShow();
-    hashedLoginButton_->quickShow();
+    twoFactorAuthButton_->quickHide();
+    twoFactorAuthButton_->setVisible(false);
+    forgotPassButton_->quickHide();
+    forgotPassButton_->setVisible(false);
+    standardLoginButton_->quickHide();
+    standardLoginButton_->setVisible(false);
+    hashedLoginButton_->quickHide();
+    hashedLoginButton_->setVisible(false);
 
+    backButton_->setVisible(false);
     showEditBoxes();
     updatePositions();
 }
@@ -195,7 +200,7 @@ void LoginWindowItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
     painter->setFont(FontManager::instance().getFont(24,  QFont::Normal));
     painter->setPen(QColor(255,255,255)); //  white
 
-    QString loginText = tr("Login");
+    QString loginText = tr("Employee Login");
     QFontMetrics fm = painter->fontMetrics();
     const int loginTextWidth = fm.horizontalAdvance(loginText);
     painter->drawText(centeredOffset(WINDOW_WIDTH*G_SCALE, loginTextWidth),
@@ -238,6 +243,7 @@ void LoginWindowItem::resetState()
 {
     usernameEntry_->clearActiveState();
     passwordEntry_->clearActiveState();
+    current2FACode_.clear();
     hashEntry_->clearActiveState();
 
     loginButton_->setError(false);
@@ -403,9 +409,9 @@ void LoginWindowItem::onLanguageChanged()
     standardLoginButton_->recalcBoundingRect();
     hashedLoginButton_->setText(tr("Hashed"));
     hashedLoginButton_->recalcBoundingRect();
-    usernameEntry_->setDescription(tr("Username"));
+    usernameEntry_->setDescription(tr("Employee username"));
     usernameEntry_->setPlaceholderText(tr("Enter username"));
-    passwordEntry_->setDescription(tr("Password"));
+    passwordEntry_->setDescription(tr("Employee password"));
     passwordEntry_->setPlaceholderText(tr("Enter password"));
     hashEntry_->setDescription(tr("Hash"));
     hashEntry_->setPlaceholderText(tr("Account Hash or upload file"));
@@ -517,6 +523,11 @@ void LoginWindowItem::setUsernameFocus()
     } else {
         hashEntry_->setFocus();
     }
+}
+
+void LoginWindowItem::setEmployeeUsername(const QString &username)
+{
+    if (!username.isEmpty()) usernameEntry_->setText(username);
 }
 
 int LoginWindowItem::centeredOffset(int background_length, int graphic_length)

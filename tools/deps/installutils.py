@@ -189,6 +189,7 @@ def DetectVisualStudioDir(installerPath, legacy=False):
             executor_args.append("-legacy")
         else:
             executor_args.append("-latest")
+            executor_args.extend(["-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"])
 
         executor_args.extend(["-property", "installationPath"])
 

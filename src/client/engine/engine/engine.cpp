@@ -352,6 +352,7 @@ bool Engine::firewallOff()
 
 void Engine::connectClick(const LocationID &locationId, const types::ConnectionSettings &connectionSettings, const QPair<QString, QString> &pinnedNode)
 {
+    if (!employeeAccessAllowed_) return;
     QMutexLocker locker(&mutex_);
     if (bInitialized_)
     {
@@ -1060,6 +1061,7 @@ void Engine::sendConfirmEmailImpl()
 
 void Engine::connectClickImpl(const LocationID &locationId, const types::ConnectionSettings &connectionSettings, const QPair<QString, QString> &pinnedNode)
 {
+    if (!employeeAccessAllowed_) return;
     locationId_ = locationId;
     connectionSettingsOverride_ = connectionSettings;
     pinnedNode_ = pinnedNode;
@@ -1178,6 +1180,10 @@ void Engine::getWebSessionTokenImpl(WEB_SESSION_PURPOSE purpose)
 // function consists of two parts (first - disconnect if need, second - do other logout stuff)
 void Engine::logoutImpl(bool keepFirewallOn)
 {
+    loginCanceled_ = true;
+    loginCredentials_.reset();
+    signupCredentials_.reset();
+    SAFE_DELETE_LATER(loginWaitForNetworkConnectivity_);
     if (!connectionManager_->isDisconnected())
     {
         connectionManager_->setProperty("senderSource", (keepFirewallOn ? "logoutImplKeepFirewallOn" : "logoutImpl"));
@@ -1197,8 +1203,8 @@ void Engine::logoutImplAfterDisconnect(bool keepFirewallOn)
     firewallController_->setFirewallOnBoot(false);
 #endif
 
+    WSNet::instance()->apiResourcersManager()->logout();
     if (isLoggedIn_) {
-        WSNet::instance()->apiResourcersManager()->logout();
         isLoggedIn_ = false;
         tryLoginNextConnectOrDisconnect_ = false;
     }
@@ -1275,6 +1281,7 @@ void Engine::updateCurrentInternetConnectivityImpl()
 
 void Engine::reconnectImpl()
 {
+    if (!employeeAccessAllowed_) return;
     connectionManager_->reconnect();
 }
 
@@ -1955,6 +1962,7 @@ void Engine::onConnectionManagerRequestPrivKeyPassword()
 
 void Engine::emergencyConnectClickImpl()
 {
+    if (!employeeAccessAllowed_) return;
     ConnectRequest req;
     req.bli = QSharedPointer<EmergencyLocationInfo>::create();
     req.proxySettings = ProxyServerController::instance().getCurrentProxySettings();
@@ -2616,6 +2624,10 @@ void Engine::onApiResourceManagerCallback(ApiResourcesManagerNotification notifi
 
 void Engine::onApiResourcesManagerReadyForLogin(bool isLoginFromSavedSettings)
 {
+    if (loginCanceled_) {
+        WSNet::instance()->apiResourcersManager()->logout();
+        return;
+    }
     isLoggedIn_ = true;
     tryLoginNextConnectOrDisconnect_ = false;
 
@@ -2651,6 +2663,7 @@ void Engine::onApiResourcesManagerReadyForLogin(bool isLoginFromSavedSettings)
 
 void Engine::onApiResourcesManagerLoginFailed(LoginResult loginResult, const QString &errorMessage)
 {
+    if (loginCanceled_) return;
     qCInfo(LOG_BASIC) << "onApiResourcesManagerLoginFailed, retCode =" << (int)loginResult << ";errorMessage =" << errorMessage;
 
     if (loginResult == LoginResult::kNoConnectivity) {
@@ -2701,7 +2714,7 @@ void Engine::onApiResourcesManagerServerCredentialsFetched()
 
 void Engine::onApiResourcesManagerAuthTokenFinished(LoginResult loginResult)
 {
-    WS_ASSERT(loginCredentials_ != nullptr || signupCredentials_ != nullptr);
+    if (loginCanceled_ || (!loginCredentials_ && !signupCredentials_)) return;
 
     if (loginResult == LoginResult::kNoConnectivity) {
         emit loginError(LoginResult::kNoConnectivity, QString());
@@ -2853,6 +2866,7 @@ void Engine::addCustomRemoteIpToFirewallIfNeed()
 
 void Engine::doConnect(bool bEmitAuthError)
 {
+    if (!employeeAccessAllowed_) return;
     QSharedPointer<locationsmodel::BaseLocationInfo> bli = locationsModel_->getMutableLocationInfoById(locationId_);
     if (bli.isNull() || !bli->isExistSelectedNode())
     {
@@ -3118,6 +3132,7 @@ void Engine::doCheckUpdate()
 
 void Engine::loginImpl(bool isUseAuthHash, const QString &username, const QString &password, const QString &code2fa)
 {
+    loginCanceled_ = false;
     bool isOnline = networkDetectionManager_->isOnline();
 
     if (isUseAuthHash) {
@@ -3158,6 +3173,7 @@ void Engine::loginImpl(bool isUseAuthHash, const QString &username, const QStrin
 
             connect(loginWaitForNetworkConnectivity_, &WaitForNetworkConnectivity::connectivityOnline, [this]() {
                 SAFE_DELETE_LATER(loginWaitForNetworkConnectivity_);
+                if (!loginCredentials_ || loginCanceled_) return;
                 callAuthTokenLogin(loginCredentials_->username);
             });
 

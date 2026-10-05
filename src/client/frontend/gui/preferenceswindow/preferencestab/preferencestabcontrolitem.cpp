@@ -50,6 +50,9 @@ PreferencesTabControlItem::PreferencesTabControlItem(ScalableGraphicsObject * pa
         aboutButton_
     };
 
+    // Access gate build: the account page is never shown.
+    accountButton_->setVisible(false);
+
     updateTopAnchoredButtonsPos();
 
     logoutButton_ = new TabButton(this, TAB_UNDEFINED, "preferences/LOGOUT_ICON", QColor(0xff, 0xef, 0x02));
@@ -132,6 +135,7 @@ void PreferencesTabControlItem::setHeight(int newHeight)
 
 void PreferencesTabControlItem::onTabClicked(PREFERENCES_TAB_TYPE tab, TabButton *button)
 {
+    if (tab == TAB_ACCOUNT) return;
     switch(tab) {
         case TAB_UNDEFINED:
             if (button == logoutButton_) {
@@ -182,7 +186,8 @@ void PreferencesTabControlItem::onIsExternalConfigModeChanged(bool bIsExternalCo
     // May change "Log Out" vs "Login"
     onLanguageChanged();
 
-    accountButton_->setVisible(!bIsExternalConfigMode);
+    // Access gate build: the account page is never shown.
+    accountButton_->setVisible(false);
     robertButton_->setVisible(!bIsExternalConfigMode);
     if (bIsExternalConfigMode && curTab_ == TAB_ACCOUNT) {
         onTabClicked(TAB_GENERAL, generalButton_);
