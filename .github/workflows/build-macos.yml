@@ -27,8 +27,6 @@ jobs:
           fi
           keychain="$RUNNER_TEMP/private-test.keychain-db"
           p12="$RUNNER_TEMP/private-test-signing.p12"
-          cert_pem="$RUNNER_TEMP/private-test-signing-cert.pem"
-          cert_der="$RUNNER_TEMP/private-test-signing-cert.der"
           keychain_password="$(openssl rand -hex 24)"
           printf '%s' "$CUSTOM_SIGNING_PFX_B64" | base64 --decode > "$p12"
           security create-keychain -p "$keychain_password" "$keychain"
@@ -36,11 +34,7 @@ jobs:
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$p12" -f pkcs12 -k "$keychain" -P "$CUSTOM_SIGNING_PFX_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
-          openssl pkcs12 -in "$p12" -clcerts -nokeys -passin env:CUSTOM_SIGNING_PFX_PASSWORD -out "$cert_pem"
-          openssl x509 -in "$cert_pem" -outform DER -out "$cert_der"
-          security add-trusted-cert -r trustAsRoot -p codeSign -k "$keychain" "$cert_der"
           security list-keychains -d user -s "$keychain"
-          security find-identity -v -p codesigning "$keychain" | grep -F 'Mostafa Private Test Builds'
           echo "PRIVATE_TEST_CODESIGN_IDENTITY=Mostafa Private Test Builds" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
@@ -75,7 +69,7 @@ jobs:
         shell: bash
         run: |
           security delete-keychain "$RUNNER_TEMP/private-test.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/private-test-signing.p12" "$RUNNER_TEMP/private-test-signing-cert.pem" "$RUNNER_TEMP/private-test-signing-cert.der"
+          rm -f "$RUNNER_TEMP/private-test-signing.p12"
 
       - uses: actions/upload-artifact@v4
         with:

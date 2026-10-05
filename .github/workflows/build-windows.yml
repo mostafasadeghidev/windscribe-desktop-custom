@@ -43,10 +43,15 @@ jobs:
       - name: Install vcpkg
         shell: cmd
         run: |
-          if exist C:\wsvcpkg rmdir /s /q C:\wsvcpkg
           if not exist C:\vcpkg-bincache mkdir C:\vcpkg-bincache
           git clone https://github.com/Windscribe/ws-vcpkg-registry.git C:\wsreg || exit /b 1
-          call C:\wsreg\install-vcpkg\vcpkg_install.bat C:\wsvcpkg
+          set /p VCPKG_COMMIT=<C:\wsreg\install-vcpkg\vcpkg_commit.txt
+          git clone https://github.com/Microsoft/vcpkg.git C:\wsvcpkg || exit /b 1
+          git -C C:\wsvcpkg checkout %VCPKG_COMMIT% || exit /b 1
+          git -C C:\wsvcpkg apply C:\wsreg\install-vcpkg\patches\vcpkg_configure_cmake.patch || exit /b 1
+          git -C C:\wsvcpkg apply C:\wsreg\install-vcpkg\patches\ios_toolchain.patch || exit /b 1
+          call C:\wsvcpkg\bootstrap-vcpkg.bat -disableMetrics || exit /b 1
+          xcopy /Y /Q C:\wsreg\triplets\*.cmake C:\wsvcpkg\triplets\
           if not exist C:\wsvcpkg\vcpkg.exe exit /b 1
 
       - uses: ilammy/msvc-dev-cmd@v1
