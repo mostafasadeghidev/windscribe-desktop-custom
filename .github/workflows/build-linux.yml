@@ -36,13 +36,13 @@ jobs:
         shell: bash
         run: |
           for lib in wireguard amneziawg wstunnel; do
-            docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc "cd /w/tools/deps && ./install_$lib"
+            docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc "git config --global --add safe.directory /w && cd /w/tools/deps && ./install_$lib"
           done
 
       - name: Build app and Debian package
         shell: bash
         run: |
-          docker run --rm -e VCPKG_ROOT=/vcpkg -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc 'cd /w/tools && ./build_all --dev-mode'
+          docker run --rm -e VCPKG_ROOT=/vcpkg -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg" ws-builder /bin/bash -lc 'git config --global --add safe.directory /w && cd /w/tools && ./build_all --dev-mode'
 
       - name: Sign Debian packages with the private test certificate
         shell: bash
