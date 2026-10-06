@@ -5,6 +5,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(launcher_mac)
 
+if(DEV_MODE AND DEFINED ENV{PRIVATE_TEST_CODESIGN_IDENTITY} AND NOT "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" STREQUAL "")
+    set(WS_MAC_CODESIGN_IDENTITY "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}")
+    set(WS_MAC_CODESIGN_TIMESTAMP_OPTION --timestamp=none)
+else()
+    set(WS_MAC_CODESIGN_IDENTITY "Developer ID Application")
+    set(WS_MAC_CODESIGN_TIMESTAMP_OPTION --timestamp)
+endif()
+
 set(SOURCES
     appdelegate.h
     main.m
@@ -39,9 +47,9 @@ add_custom_command(TARGET ${WS_MAC_LAUNCHER_TARGET} POST_BUILD
     COMMAND ${CODESIGN_EXECUTABLE}
             --force
             --options runtime
-            --timestamp
+            ${WS_MAC_CODESIGN_TIMESTAMP_OPTION}
             --entitlements "${CMAKE_CURRENT_SOURCE_DIR}/launcher.entitlements"
-            --sign "Developer ID Application"
+            --sign "${WS_MAC_CODESIGN_IDENTITY}"
             $<TARGET_BUNDLE_DIR:${WS_MAC_LAUNCHER_TARGET}>
     COMMAND ${CODESIGN_EXECUTABLE} -v $<TARGET_BUNDLE_DIR:${WS_MAC_LAUNCHER_TARGET}>
 )

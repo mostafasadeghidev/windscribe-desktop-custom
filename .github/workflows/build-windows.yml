@@ -35,7 +35,8 @@ jobs:
       - uses: seanmiddleditch/gha-setup-ninja@v5
 
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
+        id: vcpkg-cache
         with:
           path: C:\vcpkg-bincache
           key: vcpkg-${{ hashFiles('tools/vcpkg/vcpkg.json', 'tools/vcpkg/vcpkg-configuration.json') }}
@@ -71,6 +72,13 @@ jobs:
           --host-triplet=ws-x64-windows-static-release
           --clean-buildtrees-after-build
           --clean-packages-after-build
+
+      - name: Save vcpkg binary cache
+        if: success() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: C:\vcpkg-bincache
+          key: vcpkg-${{ hashFiles('tools/vcpkg/vcpkg.json', 'tools/vcpkg/vcpkg-configuration.json') }}
 
       - name: Build native libraries
         run: |

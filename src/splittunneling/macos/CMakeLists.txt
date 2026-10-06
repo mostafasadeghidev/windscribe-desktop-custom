@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.15)
 project(splittunnelextension)
 
+if(DEV_MODE AND DEFINED ENV{PRIVATE_TEST_CODESIGN_IDENTITY} AND NOT "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}" STREQUAL "")
+    set(WS_MAC_CODESIGN_IDENTITY "$ENV{PRIVATE_TEST_CODESIGN_IDENTITY}")
+    set(WS_MAC_CODESIGN_TIMESTAMP_OPTION --timestamp=none)
+else()
+    set(WS_MAC_CODESIGN_IDENTITY "Developer ID Application")
+    set(WS_MAC_CODESIGN_TIMESTAMP_OPTION --timestamp)
+endif()
+
 find_package(c-ares REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
@@ -64,9 +72,9 @@ add_custom_command(TARGET ${WS_MAC_SPLIT_TUNNEL_BUNDLE_ID} POST_BUILD
     COMMAND ${CODESIGN_EXECUTABLE}
             --force
             --options runtime
-            --timestamp
+            ${WS_MAC_CODESIGN_TIMESTAMP_OPTION}
             --entitlements "${CMAKE_CURRENT_BINARY_DIR}/splittunnelextension.entitlements.configured"
-            --sign "Developer ID Application"
+            --sign "${WS_MAC_CODESIGN_IDENTITY}"
             $<TARGET_BUNDLE_DIR:${WS_MAC_SPLIT_TUNNEL_BUNDLE_ID}>
     COMMAND ${CODESIGN_EXECUTABLE} -v $<TARGET_BUNDLE_DIR:${WS_MAC_SPLIT_TUNNEL_BUNDLE_ID}>
 )
