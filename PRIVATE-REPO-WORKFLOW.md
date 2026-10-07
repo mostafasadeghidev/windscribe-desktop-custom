@@ -16,6 +16,8 @@ The signing identity is self-signed for private testing. It does not provide Mic
 
 Builds run only when manually requested because these desktop builds are large and private GitHub Actions minutes are limited.
 
+Each successful build also attaches its signed package to a GitHub pre-release tagged `v<version>-private-<short commit>`. All three platforms share the release for the same commit, so running the Windows, macOS, and Linux workflows on the same commit yields one release with every installer. Releases do not expire; use the **Releases** page for downloads that must outlive the 14-day artifact window.
+
 ## Install updates
 
 Private test builds skip Windscribe's updater and hide the vendor update-channel selector. Get a replacement package from this repository's **Actions** artifacts and install it manually. Verify a Linux signature with:

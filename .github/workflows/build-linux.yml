@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -71,6 +71,9 @@ jobs:
             echo "Missing private test signing certificate Actions secrets." >&2
             exit 1
           fi
+          # The package was produced by root inside the builder container; take ownership so the
+          # runner user can write the signature files next to it.
+          sudo chown -R "$(id -u):$(id -g)" build-exe
           p12="$RUNNER_TEMP/private-test-signing.p12"
           key="$RUNNER_TEMP/private-test-signing-key.pem"
           cert="$RUNNER_TEMP/private-test-signing-cert.pem"
@@ -101,3 +104,20 @@ jobs:
             build-exe/*.deb.cert.pem
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(cmake -DINTEGRATION=gui -DNO_SUFFIX=1 -P cmake/print_version.cmake 2>&1 | tr -d '[:space:]')"
+          short="${GITHUB_SHA:0:7}"
+          tag="v${version}-private-${short}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "Private test ${version} (${short})" \
+              --notes "Private test build of commit ${GITHUB_SHA}. Installers are signed with the self-signed private test certificate; they are not notarized and carry no vendor reputation." \
+              || true
+          fi
+          gh release upload "$tag" build-exe/*.deb build-exe/*.deb.sig build-exe/*.deb.cert.pem --repo "$GITHUB_REPOSITORY" --clobber

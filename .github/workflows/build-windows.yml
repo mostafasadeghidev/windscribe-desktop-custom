@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-windows-${{ github.ref }}
@@ -110,8 +110,9 @@ jobs:
           )
           $certificatePath = Join-Path $env:RUNNER_TEMP 'private-test-signing.cer'
           [IO.File]::WriteAllBytes($certificatePath, $certificate.RawData)
-          & certutil.exe -f -user -addstore Root $certificatePath | Out-Host
-          if ($LASTEXITCODE -ne 0) { throw 'Could not trust the private test certificate in the temporary runner.' }
+          # Trust the certificate in the machine Root store. The user Root store shows a
+          # confirmation dialog that never returns on a headless runner.
+          Import-Certificate -FilePath $certificatePath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
           $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
           $signtool = Get-ChildItem $sdkBin -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
@@ -135,3 +136,20 @@ jobs:
           path: build-exe\*.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(cmake -DINTEGRATION=gui -DNO_SUFFIX=1 -P cmake/print_version.cmake 2>&1 | tr -d '[:space:]')"
+          short="${GITHUB_SHA:0:7}"
+          tag="v${version}-private-${short}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "Private test ${version} (${short})" \
+              --notes "Private test build of commit ${GITHUB_SHA}. Installers are signed with the self-signed private test certificate; they are not notarized and carry no vendor reputation." \
+              || true
+          fi
+          gh release upload "$tag" build-exe/*.exe --repo "$GITHUB_REPOSITORY" --clobber
