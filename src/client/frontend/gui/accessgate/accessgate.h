@@ -1,5 +1,6 @@
 #pragma once
 #include <functional>
+#include <QElapsedTimer>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QObject>
@@ -14,7 +15,6 @@ public:
     explicit AccessGate(QObject *parent = nullptr);
     bool hasSession() const;
     bool hasPendingLogin() const;
-    bool isWithinOfflineGrace() const;
     QString username() const;
     void clearSession();
     void cancelPendingLogin();
@@ -22,6 +22,9 @@ public:
     bool completeLogin();
     void login(const QString &username, const QString &password);
     void checkNow();
+    // Check again now, discarding any check still in flight. Call once the VPN tunnel is up so a check
+    // that could not reach the server on the open network is repeated through the tunnel.
+    void recheckNow();
     void startPeriodicChecks();
     void stopPeriodicChecks();
     static QString lockMessage(LockReason reason);
@@ -39,6 +42,8 @@ private:
         qint64 lastOkServerMs = 0;
         int checkIntervalSec = 3600;
         int offlineGraceSec = 172800;
+        // App running time since the last valid answer, counted only while checks are failing.
+        qint64 unreachableMs = 0;
     };
     void post(const QString &path, const QJsonObject &body, std::function<void(const HttpResult &)> callback);
     bool openEnvelope(const QJsonValue &envelope, const QString &nonce, const QString &username, QJsonObject &payload) const;
@@ -48,16 +53,20 @@ private:
     void revoke(LockReason reason);
     void loadState();
     bool saveState();
+    void accumulateUnreachable();
     static QString newNonce();
-    static bool withinGrace(const State &state, qint64 now);
     QNetworkAccessManager network_;
     QTimer timer_;
-    QTimer graceTimer_;
+    QTimer unreachableTimer_;
+    QElapsedTimer unreachableClock_;
+    int unreachableTicks_ = 0;
+    bool unreachable_ = false;
     State state_;
     State pending_;
     QString deviceId_;
     int failedChecks_ = 0;
     quint64 generation_ = 0;
+    quint64 checkSeq_ = 0;
     bool checkInFlight_ = false;
     bool loginInFlight_ = false;
     bool periodicChecks_ = false;

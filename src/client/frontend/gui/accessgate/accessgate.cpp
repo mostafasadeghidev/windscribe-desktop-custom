@@ -49,32 +49,23 @@ AccessGate::AccessGate(QObject *parent) : QObject(parent), network_(this)
     loadState();
     timer_.setSingleShot(true);
     connect(&timer_, &QTimer::timeout, this, &AccessGate::checkNow);
-    // Enforce grace while a request hangs, during 2FA, and on backwards clock jumps.
-    graceTimer_.setInterval(1000);
-    connect(&graceTimer_, &QTimer::timeout, this, [this] {
-        if ((hasSession() || hasPendingLogin()) && !isWithinOfflineGrace()) revoke(LockReason::kOfflineTooLong);
+    // Count app running time while the access server cannot be reached (see kMaxUnreachableMs).
+    unreachableTimer_.setInterval(AccessGateConfig::kUnreachableTickMs);
+    connect(&unreachableTimer_, &QTimer::timeout, this, [this] {
+        accumulateUnreachable();
+        if (unreachable_ && ++unreachableTicks_ % AccessGateConfig::kUnreachableSaveEveryTicks == 0 && !saveState())
+            revoke(LockReason::kStorageError);
     });
 }
 bool AccessGate::hasSession() const { return !state_.token.isEmpty(); }
 bool AccessGate::hasPendingLogin() const { return !pending_.token.isEmpty(); }
 QString AccessGate::username() const { return state_.username; }
-bool AccessGate::withinGrace(const State &state, qint64 now)
-{
-    return !state.token.isEmpty() && state.lastOkLocalMs > 0 && state.offlineGraceSec > 0 &&
-        now >= state.lastOkLocalMs - AccessGateConfig::kClockSkewToleranceMs &&
-        now - state.lastOkLocalMs <= static_cast<qint64>(state.offlineGraceSec) * 1000;
-}
-bool AccessGate::isWithinOfflineGrace() const
-{
-    return withinGrace(hasPendingLogin() ? pending_ : state_, QDateTime::currentMSecsSinceEpoch());
-}
 void AccessGate::cancelPendingLogin()
 {
     ++generation_;
     pending_ = State();
     loginInFlight_ = false;
     checkInFlight_ = false;
-    if (!hasSession()) graceTimer_.stop();
 }
 void AccessGate::clearSession()
 {
@@ -83,11 +74,11 @@ void AccessGate::clearSession()
     const QString user = state_.username;
     state_ = State();
     state_.username = user;
+    unreachable_ = false;
     if (!saveState()) { storageOk_ = false; GateSecureStorage::remove(); }
 }
 bool AccessGate::completeLogin()
 {
-    if (!isWithinOfflineGrace()) { revoke(LockReason::kOfflineTooLong); return false; }
     if (hasPendingLogin()) {
         state_ = pending_;
         pending_ = State();
@@ -100,7 +91,6 @@ void AccessGate::login(const QString &username, const QString &password)
     if (loginInFlight_) return;
     cancelPendingLogin();
     if (!storageOk_ || deviceId_.isEmpty()) { emit loginFailed(lockMessage(LockReason::kStorageError)); return; }
-    graceTimer_.start();
     loginInFlight_ = true;
     const QString user = username.trimmed().toLower();
     const QString nonce = newNonce();
@@ -190,27 +180,39 @@ void AccessGate::recordOk(State &state, const QJsonObject &payload)
 }
 void AccessGate::checkNow()
 {
-    if (!hasSession()) return;
-    if (!isWithinOfflineGrace()) { revoke(LockReason::kOfflineTooLong); return; }
-    if (checkInFlight_) return;
+    if (!hasSession() || checkInFlight_) return;
     checkInFlight_ = true;
+    const auto seq = ++checkSeq_;
     const QString nonce = newNonce();
     const QString user = state_.username;
     const QJsonObject body {
         {"username", user}, {"device_id", deviceId_}, {"token", state_.token}, {"nonce", nonce},
         {"app_version", QCoreApplication::applicationVersion()}
     };
-    post("/api/v1/check", body, [this, nonce, user](const HttpResult &result) { onCheckFinished(result, nonce, user); });
+    post("/api/v1/check", body, [this, nonce, user, seq](const HttpResult &result) {
+        if (seq == checkSeq_) onCheckFinished(result, nonce, user);  // else superseded by recheckNow()
+    });
+}
+void AccessGate::recheckNow()
+{
+    if (!hasSession()) return;
+    ++checkSeq_;
+    checkInFlight_ = false;
+    checkNow();
 }
 void AccessGate::onCheckFinished(const HttpResult &result, const QString &nonce, const QString &username)
 {
     checkInFlight_ = false;
-    if (!isWithinOfflineGrace()) { revoke(LockReason::kOfflineTooLong); return; }
+    if (!hasSession()) return;
     QJsonObject payload;
     if (result.networkError || result.status != 200 ||
         !openEnvelope(QJsonDocument::fromJson(result.body).object().value("status"), nonce, username, payload)) {
-        if (!isWithinOfflineGrace()) revoke(LockReason::kOfflineTooLong);
-        else scheduleNextCheck(true);
+        // Not reaching the server never signs the user out by itself; only a long unreachable streak does.
+        unreachable_ = true;
+        accumulateUnreachable();
+        if (state_.unreachableMs >= AccessGateConfig::kMaxUnreachableMs) { revoke(LockReason::kOfflineTooLong); return; }
+        if (!saveState()) { revoke(LockReason::kStorageError); return; }
+        scheduleNextCheck(true);
         return;
     }
     const auto status = payload.value("status").toString();
@@ -218,9 +220,21 @@ void AccessGate::onCheckFinished(const HttpResult &result, const QString &nonce,
         revoke(status == "disabled" ? LockReason::kDisabled : status == "device_revoked" ? LockReason::kDeviceRevoked : LockReason::kUnknownUser);
         return;
     }
+    unreachable_ = false;
+    unreachableClock_.invalidate();
+    state_.unreachableMs = 0;
     recordOk(state_, payload);
     if (!saveState()) { revoke(LockReason::kStorageError); return; }
     scheduleNextCheck(false);
+}
+void AccessGate::accumulateUnreachable()
+{
+    if (!unreachable_ || !hasSession()) { unreachableClock_.invalidate(); return; }
+    // Monotonic and capped per step: wall-clock changes and sleep/suspend do not add time.
+    if (unreachableClock_.isValid())
+        state_.unreachableMs += std::min(unreachableClock_.restart(), AccessGateConfig::kUnreachableMaxStepMs);
+    else
+        unreachableClock_.start();
 }
 void AccessGate::scheduleNextCheck(bool failed)
 {
@@ -236,11 +250,18 @@ void AccessGate::startPeriodicChecks()
 {
     if (periodicChecks_) return;
     periodicChecks_ = true;
-    graceTimer_.start();
+    unreachableClock_.invalidate();
+    unreachableTimer_.start();
     failedChecks_ = 0;
     checkNow();
 }
-void AccessGate::stopPeriodicChecks() { periodicChecks_ = false; timer_.stop(); graceTimer_.stop(); }
+void AccessGate::stopPeriodicChecks()
+{
+    periodicChecks_ = false;
+    timer_.stop();
+    unreachableTimer_.stop();
+    unreachableClock_.invalidate();
+}
 void AccessGate::revoke(LockReason reason) { clearSession(); emit accessRevoked(reason); }
 QString AccessGate::newNonce()
 {
@@ -250,7 +271,7 @@ QString AccessGate::newNonce()
 }
 QString AccessGate::lockMessage(LockReason reason)
 {
-    if (reason == LockReason::kOfflineTooLong) return tr("Cannot reach the access server. Please sign in again.");
+    if (reason == LockReason::kOfflineTooLong) return tr("The access server has been unreachable for too long. Please sign in again.");
     if (reason == LockReason::kStorageError) return tr("Secure storage is unavailable. Unlock your system keyring and restart the app.");
     return tr("Your access has been disabled. Contact your administrator.");
 }
@@ -272,7 +293,9 @@ void AccessGate::loadState()
         state_.lastOkServerMs = obj.value("last_ok_server_time").toInteger();
         state_.checkIntervalSec = obj.value("check_interval_sec").toInt(3600);
         state_.offlineGraceSec = obj.value("offline_grace_sec").toInt(172800);
+        state_.unreachableMs = std::max<qint64>(0, obj.value("unreachable_ms").toInteger());
         if (state_.checkIntervalSec < 1 || state_.checkIntervalSec > 86400 || state_.offlineGraceSec < 1 || state_.offlineGraceSec > 30 * 86400) state_.token.clear();
+        unreachable_ = !state_.token.isEmpty() && state_.unreachableMs > 0;
     } else {
         deviceId_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
         storageOk_ = saveState();
@@ -283,7 +306,8 @@ bool AccessGate::saveState()
     const QJsonObject obj {
         {"v", 1}, {"device_id", deviceId_}, {"username", state_.username}, {"token", state_.token},
         {"last_ok_local_time", state_.lastOkLocalMs}, {"last_ok_server_time", state_.lastOkServerMs},
-        {"check_interval_sec", state_.checkIntervalSec}, {"offline_grace_sec", state_.offlineGraceSec}
+        {"check_interval_sec", state_.checkIntervalSec}, {"offline_grace_sec", state_.offlineGraceSec},
+        {"unreachable_ms", state_.unreachableMs}
     };
     return GateSecureStorage::write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }

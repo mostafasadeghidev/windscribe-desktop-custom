@@ -1741,7 +1741,9 @@ void MainWindow::onBackendInitFinished(INIT_STATE initState)
             onPreferencesShareProxyGatewayChanged(p->shareProxyGateway());
         }
 
-        if (accessGate_->hasSession() && accessGate_->isWithinOfflineGrace() && backend_->isCanLoginWithAuthHash()) {
+        // A stored employee session never expires with time; the periodic check below ends it only on
+        // an explicit revocation from the access server.
+        if (accessGate_->hasSession() && backend_->isCanLoginWithAuthHash()) {
             accessGate_->startPeriodicChecks();
             mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));
             mainWindowController_->getLoggingInWindow()->hideCaptcha();
@@ -1750,8 +1752,7 @@ void MainWindow::onBackendInitFinished(INIT_STATE initState)
             backend_->loginWithAuthHash();
         } else {
             mainWindowController_->getInitWindow()->startSlideAnimation();
-            const bool expired = accessGate_->hasSession() && !accessGate_->isWithinOfflineGrace();
-            lockAccess(expired ? AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong) : QString());
+            lockAccess(QString());
         }
 
         updateConnectWindowStateProtocolPortDisplay();
@@ -2140,6 +2141,9 @@ void MainWindow::onBackendConnectStateChanged(const types::ConnectState &connect
 
     if (connectState.connectState == CONNECT_STATE_CONNECTED)
     {
+        // The check started before connecting may not reach the access server on a filtered network;
+        // repeat it through the tunnel so a revocation still takes effect within seconds.
+        accessGate_->recheckNow();
         bytesTransferred_ = 0;
         connectionElapsedTimer_.start();
 
@@ -4208,10 +4212,12 @@ void MainWindow::setLoginOrSignupWindowError(LoginWindow::ERROR_MESSAGE_TYPE err
 bool MainWindow::gateCanConnect()
 {
     if (gateLockInProgress_) return false;
-    if (!accessGate_->hasSession() || !accessGate_->isWithinOfflineGrace()) {
-        lockAccess(AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong));
+    if (!accessGate_->hasSession()) {
+        lockAccess(QString());
         return false;
     }
+    // Ask the access server on every connect, without blocking it: only a signed revocation in the
+    // answer disconnects and signs out; an unreachable server lets the connection proceed.
     accessGate_->checkNow();
     return true;
 }
@@ -4219,8 +4225,8 @@ bool MainWindow::gateCanConnect()
 void MainWindow::submitGateTwoFactor(const QString &code)
 {
     if (gateLockInProgress_ || backend_->currentLoginState() == LOGIN_STATE_LOGGING_IN) return;
-    if (!accessGate_->hasPendingLogin() || !accessGate_->isWithinOfflineGrace() || gateWsUsername_.isEmpty() || gateWsPassword_.isEmpty()) {
-        lockAccess(AccessGate::lockMessage(AccessGate::LockReason::kOfflineTooLong));
+    if (!accessGate_->hasPendingLogin() || gateWsUsername_.isEmpty() || gateWsPassword_.isEmpty()) {
+        lockAccess(QString());
         return;
     }
     mainWindowController_->getLoggingInWindow()->setMessage(tr("Logging you in..."));

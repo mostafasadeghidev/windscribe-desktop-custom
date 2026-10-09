@@ -5,6 +5,7 @@
 #include <QSharedPointer>
 #include <openssl/evp.h>
 #include "../accessgate.h"
+#include "../accessgateconfig.h"
 #include "../securestorage.h"
 
 namespace {
@@ -174,13 +175,71 @@ private slots:
         gate.login("ali", "password"); QTRY_COMPARE(failure.count(), 1);
         QVERIFY(failure[0][0].toString().contains("another device"));
     }
-    void offlineClockRules()
+    void oldSessionSurvivesRestart()
     {
-        AccessGate gate; session(gate); auto now = gate.state_.lastOkLocalMs;
-        QVERIFY(AccessGate::withinGrace(gate.state_, now + 172800000));
-        QVERIFY(!AccessGate::withinGrace(gate.state_, now + 172800001));
-        QVERIFY(AccessGate::withinGrace(gate.state_, now - 300000));
-        QVERIFY(!AccessGate::withinGrace(gate.state_, now - 300001));
+        // A laptop left closed for a month must come back signed in, without a new Windscribe login.
+        AccessGate gate; session(gate);
+        gate.state_.lastOkLocalMs -= 30LL * 86400 * 1000; gate.state_.lastOkServerMs -= 30LL * 86400 * 1000;
+        QVERIFY(gate.saveState());
+        AccessGate restarted; configure(restarted);
+        QVERIFY(restarted.hasSession()); QVERIFY(restarted.completeLogin());
+        QCOMPARE(restarted.state_.unreachableMs, 0LL); QVERIFY(!restarted.unreachable_);
+    }
+    void unreachableChecksNeverSignOutBeforeLimit()
+    {
+        AccessGate gate; session(gate); gate.periodicChecks_ = true;
+        QSignalSpy revoked(&gate, &AccessGate::accessRevoked);
+        for (int i = 0; i < 10; ++i) gate.onCheckFinished({0, {}, true}, "nonce", "ali");
+        QCOMPARE(revoked.count(), 0); QVERIFY(gate.hasSession()); QVERIFY(gate.unreachable_);
+        QVERIFY(QJsonDocument::fromJson(saved).object().contains("unreachable_ms"));
+    }
+    void unreachableLimitSignsOut()
+    {
+        AccessGate gate; session(gate); gate.periodicChecks_ = true;
+        QSignalSpy revoked(&gate, &AccessGate::accessRevoked);
+        gate.unreachable_ = true; gate.state_.unreachableMs = AccessGateConfig::kMaxUnreachableMs - 1;
+        gate.onCheckFinished({0, {}, true}, "nonce", "ali");
+        QCOMPARE(revoked.count(), 0); QVERIFY(gate.hasSession());
+        gate.state_.unreachableMs = AccessGateConfig::kMaxUnreachableMs;
+        gate.onCheckFinished({0, {}, true}, "nonce", "ali");
+        QCOMPARE(revoked.count(), 1); QVERIFY(!gate.hasSession());
+        QCOMPARE(revoked[0][0].value<AccessGate::LockReason>(), AccessGate::LockReason::kOfflineTooLong);
+    }
+    void validAnswerResetsUnreachableTime()
+    {
+        AccessGate gate; session(gate); gate.periodicChecks_ = true;
+        gate.unreachable_ = true; gate.state_.unreachableMs = 3LL * 86400 * 1000;
+        gate.onCheckFinished(response(sign(payload(gate))), "nonce", "ali");
+        QVERIFY(!gate.unreachable_); QCOMPARE(gate.state_.unreachableMs, 0LL);
+        QCOMPARE(QJsonDocument::fromJson(saved).object()["unreachable_ms"].toInteger(), 0LL);
+    }
+    void unreachableTimePersistsAcrossRestart()
+    {
+        AccessGate gate; session(gate);
+        gate.unreachable_ = true; gate.state_.unreachableMs = 123456; QVERIFY(gate.saveState());
+        AccessGate restarted;
+        QCOMPARE(restarted.state_.unreachableMs, 123456LL); QVERIFY(restarted.unreachable_);
+    }
+    void unreachableTimeOnlyGrowsWhileUnreachable()
+    {
+        AccessGate gate; session(gate);
+        gate.accumulateUnreachable(); QTest::qWait(30); gate.accumulateUnreachable();
+        QCOMPARE(gate.state_.unreachableMs, 0LL);
+        gate.unreachable_ = true;
+        gate.accumulateUnreachable(); QTest::qWait(30); gate.accumulateUnreachable();
+        QVERIFY(gate.state_.unreachableMs > 0);
+        QVERIFY(gate.state_.unreachableMs <= AccessGateConfig::kUnreachableMaxStepMs);
+    }
+    void recheckSupersedesCheckInFlight()
+    {
+        AccessGate gate; session(gate); gate.periodicChecks_ = true; delay_ = 150;
+        gate.checkNow(); QTRY_VERIFY(!lastRequest_.isEmpty());
+        const auto firstSeq = gate.checkSeq_;
+        gate.recheckNow();
+        // One step discards the reply in flight, one numbers the fresh request.
+        QCOMPARE(gate.checkSeq_, firstSeq + 2); QVERIFY(gate.checkInFlight_);
+        QTRY_VERIFY_WITH_TIMEOUT(!gate.checkInFlight_, 3000);
+        QVERIFY(gate.hasSession()); QVERIFY(!gate.unreachable_); QCOMPARE(gate.failedChecks_, 0);
     }
     void invalidCheckKeepsSessionAndBacksOff()
     {
@@ -209,19 +268,13 @@ private slots:
         QCOMPARE(revoked.count(), 1); QVERIFY(!gate.hasSession());
         QCOMPARE(QJsonDocument::fromJson(saved).object()["token"], QJsonValue(""));
     }
-    void expiredCheckCannotReviveSession()
+    void staleSessionIsRevivedByValidAnswer()
     {
-        AccessGate gate; session(gate); gate.state_.lastOkLocalMs -= 172800001;
+        AccessGate gate; session(gate); gate.state_.lastOkLocalMs -= 30LL * 86400 * 1000;
         QSignalSpy revoked(&gate, &AccessGate::accessRevoked);
         gate.onCheckFinished(response(sign(payload(gate))), "nonce", "ali");
-        QCOMPARE(revoked.count(), 1); QVERIFY(!gate.hasSession());
-    }
-    void watchdogExpiresWithoutNetworkReply()
-    {
-        AccessGate gate; session(gate); gate.state_.lastOkLocalMs -= 172800001;
-        gate.graceTimer_.start();
-        QSignalSpy revoked(&gate, &AccessGate::accessRevoked);
-        QTRY_COMPARE_WITH_TIMEOUT(revoked.count(), 1, 2000); QVERIFY(!gate.hasSession());
+        QCOMPARE(revoked.count(), 0); QVERIFY(gate.hasSession());
+        QVERIFY(qAbs(gate.state_.lastOkLocalMs - QDateTime::currentMSecsSinceEpoch()) < 5000);
     }
     void storageFailureLocksInsteadOfPersistingPlaintext()
     {
