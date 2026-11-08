@@ -586,6 +586,10 @@ If you lose your account hash, it&apos;s gone forever and support cannot help yo
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Windscribe could not update your hosts file, which IKEv2 requires. Another program, such as antivirus or endpoint security software, may be blocking changes to it. Please try again, or use a different connection mode.</source>
+        <translation>Windscribe не вдалося оновити файл hosts, потрібний для IKEv2. Можливо, інша програма, наприклад антивірус або засіб захисту кінцевих точок, блокує його зміну. Спробуйте ще раз або скористайтеся іншим режимом підключення.</translation>
+    </message>
+    <message>
         <source>Split Tunneling Stopped</source>
         <translation>Роздільне тунелювання зупинено</translation>
     </message>
@@ -808,14 +812,6 @@ Recovering...</source>
     <message>
         <source>Select an application</source>
         <translation>Оберіть програму</translation>
-    </message>
-    <message>
-        <source>Read-Only File</source>
-        <translation>Файл лише для читання</translation>
-    </message>
-    <message>
-        <source>Your hosts file is read-only. IKEv2 connectivity requires for it to be writable. Fix the issue automatically?</source>
-        <translation>Ваш файл hosts доступний лише для читання. Підключення IKEv2 вимагає, щоб він був доступним для запису. Виправити проблему автоматично?</translation>
     </message>
     <message>
         <source>The custom configuration could not be loaded.  Please check that it’s correct or contact support.</source>
@@ -1513,10 +1509,6 @@ If the problem persists after a restart, please send a debug log and open a supp
     <message>
         <source>Disabling Allow LAN Traffic will cause your secure hotspot to stop working.  Do you want to disable the hotspot?</source>
         <translation>Вимкнення параметра «Дозволити трафік локальної мережі» призведе до того, що ваша безпечна точка доступу перестане працювати.  Хочете відключити точку доступу?</translation>
-    </message>
-    <message>
-        <source>MAC spoofing is not supported on your version of MacOS.</source>
-        <translation>Підміна MAC не підтримується у вашій версії MacOS.</translation>
     </message>
     <message>
         <source>Automatically determine the MTU for your connection, or manually override.  This has no effect on TCP-based protocols.</source>
@@ -2386,6 +2378,10 @@ Connect to a network first</source>
 <context>
     <name>PreferencesWindow::SplitTunnelingAppsGroup</name>
     <message>
+        <source>This app is already in the list.</source>
+        <translation>Цей додаток уже є у списку.</translation>
+    </message>
+    <message>
         <source>There are too many apps in the list. Please remove some before adding more.</source>
         <translation>У списку занадто багато додатків. Будь ласка, видаліть деякі з них, перш ніж додавати нові.</translation>
     </message>
@@ -2715,6 +2711,14 @@ If the reinstall does not help, please contact Windscribe support for assistance
         <translation>Init параметр AmneziaWG містить недопустимі символи</translation>
     </message>
     <message>
+        <source>Invalid AmneziaWG parameter: %1</source>
+        <translation>Недійсний параметр AmneziaWG: %1</translation>
+    </message>
+    <message>
+        <source>Invalid &quot;PersistentKeepalive&quot; value</source>
+        <translation>Недійсне значення &quot;PersistentKeepalive&quot;</translation>
+    </message>
+    <message>
         <source>Static IPs</source>
         <translation>Статичні IP-адреси</translation>
     </message>
@@ -2813,6 +2817,10 @@ If the reinstall does not help, please contact Windscribe support for assistance
     <message>
         <source>Alternate</source>
         <translation>Альтернативний</translation>
+    </message>
+    <message>
+        <source>Windscribe is already running in another user session on this computer. Quit Windscribe in that session, then try again.</source>
+        <translation>Windscribe вже запущено в сеансі іншого користувача на цьому комп&apos;ютері. Вийдіть з Windscribe у тому сеансі, а потім спробуйте ще раз.</translation>
     </message>
 </context>
 <context>

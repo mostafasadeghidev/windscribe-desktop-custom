@@ -17,7 +17,6 @@ import base.utils as utl
 
 REPOSITORY_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOOLS_BIN_DIR = os.path.join(TOOLS_DIR, "bin")
 TOOLS_VARS_DIR = os.path.join(TOOLS_DIR, "vars")
 TEMP_DIR = os.path.join(REPOSITORY_ROOT, "temp")
 CACHED_MAKE_COMMAND = None
@@ -135,27 +134,7 @@ def ExtractFile(localfilename, outputpath=None, deleteonsuccess=True):
         outputpath = os.path.dirname(localfilename)
     msg.HeadPrint("ExtractFile: \"{}\" to \"{}\"".format(localfilename, outputpath))
     extracted = False
-    localfilename2 = None
-    if utl.GetCurrentOS() == "win32":
-        unz_exe = os.path.join(TOOLS_BIN_DIR, "7z.exe")
-        if localfilename.endswith((".gz", ".xz")):
-            unz_cmd = [unz_exe, "e", localfilename, "-o{}".format(os.path.dirname(localfilename)),
-                       "-y", "-bso0", "-bsp2"]
-            try:
-                proc.ExecuteWithRealtimeOutput(unz_cmd)
-            except RuntimeError as e:
-                msg.Verbose(e)
-                raise InstallError("Error extracting archive file.")
-            localfilename2 = localfilename
-            localfilename = localfilename[:-3]
-        unz_cmd = [unz_exe, "x", localfilename, "-o{}".format(outputpath), "-y", "-bso0", "-bsp2"]
-        try:
-            proc.ExecuteWithRealtimeOutput(unz_cmd)
-            extracted = True
-        except RuntimeError as e:
-            msg.Verbose(e)
-            raise InstallError("Error extracting archive file.")
-    elif localfilename.endswith(".zip"):
+    if localfilename.endswith(".zip"):
         try:
             zf = zipfile.ZipFile(localfilename, mode="r")
             zf.extractall(outputpath)
@@ -179,8 +158,6 @@ def ExtractFile(localfilename, outputpath=None, deleteonsuccess=True):
     if extracted and deleteonsuccess:
         utl.RemoveFile(localfilename)
         utl.RemoveFile(os.path.join(os.path.dirname(localfilename), "pax_global_header"))
-        if localfilename2:
-            utl.RemoveFile(localfilename2)
 
 
 def DetectVisualStudioDir(installerPath, legacy=False):
@@ -201,9 +178,17 @@ def DetectVisualStudioDir(installerPath, legacy=False):
         raise InstallError("Visual Studio is not installed, which is necessary for the build. Please install Visual Studio as indicated in the README and try again.")
 
 
-def GetVisualStudioEnvironment(target_arm64_arch=False):
+def GetVisualStudioEnvironment(target_arm64_arch=False, native_arm64_host=False):
     result = None
-    architecture = "amd64_arm64" if target_arm64_arch else "amd64"
+    # arm64: native ARM64 compiler, used when the PC itself is ARM64.
+    # amd64_arm64: x64 compiler emitting ARM64, used only to cross-compile from x64 hardware.
+    # amd64: x64 compiler and x64 output.
+    if target_arm64_arch and native_arm64_host:
+        architecture = "arm64"
+    elif target_arm64_arch:
+        architecture = "amd64_arm64"
+    else:
+        architecture = "amd64"
     vs_installer_path = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer"
     vs_path = DetectVisualStudioDir(vs_installer_path, legacy=False)
 
@@ -212,6 +197,9 @@ def GetVisualStudioEnvironment(target_arm64_arch=False):
         f"{vs_path}\\BuildTools\\VC\\Auxiliary\\Build\\vcvarsall.bat"
     ]:
         if os.path.isfile(batfile):
+            # shell=True is required: cmd /s /c strips the quotes around a quoted batch
+            # path, so a list-form launch cannot find vcvarsall.bat. vcvarsall arm64
+            # selects HostARM64 tools even when this process is x64 under emulation.
             process = subprocess.Popen(
                 "(\"{}\" {}>nul)&&\"{}\" -c \"import os; print(repr(os.environ))\"".format(
                     batfile, architecture, sys.executable), stdout=subprocess.PIPE, shell=True)

@@ -3,7 +3,7 @@ if(DEFINE_RUN_AS_CONSOLE_APP_MACRO)
     add_definitions(-DRUN_AS_CONSOLE_APP)
 endif(DEFINE_RUN_AS_CONSOLE_APP_MACRO)
 
-add_definitions(-DUNICODE -D_UNICODE -DWINDSCRIBE_SERVICE -DWIN32_LEAN_AND_MEAN)
+add_definitions(-DUNICODE -D_UNICODE -DWINDSCRIBE_SERVICE -DWIN32_LEAN_AND_MEAN -DDEBUG_TRACE_SPDLOG)
 
 find_package(Boost REQUIRED COMPONENTS serialization)
 find_package(spdlog CONFIG REQUIRED)
@@ -30,10 +30,10 @@ set(SOURCES
     macaddressspoof.cpp
     main.cpp
     network_validation.cpp
+    ../common/ovpn_early_exit_log.cpp
     openvpn/openvpncontroller.cpp
     openvpn/ovpn_msg_channel.cpp
     openvpn/ovpn_msg_parse.cpp
-    pipe_for_process.cpp
     process_command.cpp
     reinstall_wan_ikev2.cpp
     remove_app_network_profiles.cpp
@@ -42,7 +42,6 @@ set(SOURCES
     split_tunneling/hostnames_manager/dns_resolver.cpp
     split_tunneling/hostnames_manager/hostnames_manager.cpp
     split_tunneling/hostnames_manager/ip_routes.cpp
-    split_tunneling/ip_address_table.cpp
     split_tunneling/ip_forward_table.cpp
     split_tunneling/routes.cpp
     split_tunneling/routes_manager.cpp
@@ -51,6 +50,7 @@ set(SOURCES
     utils.cpp
     win32service.cpp
     wireguard/phantom_wireguard_devices.cpp
+    wireguard/wireguardconfigwriter.cpp
     wireguard/wireguardcontroller.cpp
     wmi_utils.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/version.rc
@@ -60,9 +60,10 @@ set(SOURCES
     ../../client/client-common/utils/executable_signature/executable_signature_win.cpp
     ../../client/client-common/types/ipaddress.cpp
     ../../client/client-common/utils/servicecontrolmanager.cpp
+    ../../client/client-common/utils/log/debug_trace.cpp
 )
 
-if(CI_MODE)
+if(BUILD_SYMBOLS)
     add_compile_options("$<$<CONFIG:Release>:/Zi>")
     add_link_options("$<$<CONFIG:Release>:/DEBUG>" "$<$<CONFIG:Release>:/OPT:REF>" "$<$<CONFIG:Release>:/OPT:ICF>")
 endif()
@@ -92,12 +93,12 @@ target_link_libraries(${WS_APP_IDENTIFIER}Service
                       rpcrt4
                       Fwpuclnt
                       Ws2_32
-                      Wtsapi32
                       Setupapi
                       wbemuuid
                       ntdll
                       Newdev
                       Shlwapi
+                      Rstrtmgr
                       wevtapi
                       wsnet::wsnet
                       Boost::serialization

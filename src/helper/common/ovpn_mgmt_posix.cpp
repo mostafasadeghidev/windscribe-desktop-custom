@@ -11,6 +11,8 @@
 #include <spdlog/spdlog.h>
 
 #include "io_posix.h"
+#include "ovpn_early_exit_log.h"
+#include "process_kill_posix.h"
 #include "validation_posix.h"
 
 namespace Utils {
@@ -22,8 +24,9 @@ std::vector<std::string> getOpenVpnExeNames();
 
 namespace OvpnMgmt {
 
-bool waitAndRelaxPerms(uid_t clientUid, pid_t ovpnPid)
+bool waitAndRelaxPerms(uid_t clientUid, pid_t ovpnPid, const std::string &logPath, std::string &outDetail)
 {
+    outDetail.clear();
     // ~10s window: the socket binds in milliseconds, but on a slow/busy machine the OpenVPN process
     // can take seconds just to start. The engine blocks on this IPC reply with no timeout, so a
     // longer wait is safe and is far better than failing a connect that would otherwise succeed.
@@ -47,6 +50,10 @@ bool waitAndRelaxPerms(uid_t clientUid, pid_t ovpnPid)
         // regardless of the daemon being reparented to init/launchd.
         if (ovpnPid > 0 && kill(ovpnPid, 0) != 0 && errno == ESRCH) {
             spdlog::error("OpenVPN (pid {}) exited before binding its management socket", ovpnPid);
+            outDetail = OvpnEarlyExitLog::readFile(logPath);
+            if (!outDetail.empty()) {
+                spdlog::error("OpenVPN early-exit log: {}", outDetail);
+            }
             return false;
         }
         usleep(50 * 1000);
@@ -57,39 +64,10 @@ bool waitAndRelaxPerms(uid_t clientUid, pid_t ovpnPid)
 
 void killOpenVPN()
 {
-    const std::vector<std::string> exes = Utils::getOpenVpnExeNames();
-
-    // pkill only *sends* the signal; it does not wait for the process to exit. OpenVPN unlinks its
-    // management socket by name during shutdown so a still-dying instance can delete the socket
-    // a freshly spawned instance just bound at the same fixed path. We therefore send SIGTERM,
-    // wait for the process to actually go away, and escalate to SIGKILL if it doesn't.
-    for (const auto &exe : exes) {
-        if (exe.empty()) {
-            continue;
-        }
-        // Using the common character-class ("bracket") trick to prevent matching on the wrapper shell.
-        const std::string pattern = "[" + exe.substr(0, 1) + "]" + exe.substr(1);
-
-        auto waitGone = [&pattern](int iterations) {
-            for (int i = 0; i < iterations; ++i) {
-                if (Utils::executeCommand("pkill", {"-0", "-f", pattern.c_str()}) != 0) {
-                    return true;
-                }
-                usleep(50 * 1000);
-            }
-            return false;
-        };
-
-        Utils::executeCommand("pkill", {"-f", pattern.c_str()});
-        if (waitGone(100)) {   // ~5s grace period
-            continue;
-        }
-
-        spdlog::warn("killOpenVPN: OpenVPN binary {} did not exit after SIGTERM; sending SIGKILL", exe);
-        Utils::executeCommand("pkill", {"-KILL", "-f", pattern.c_str()});
-        if (!waitGone(20)) {   // ~1s to confirm reap
-            spdlog::error("killOpenVPN: OpenVPN binary {} still present after SIGKILL", exe);
-        }
+    // OpenVPN unlinks its management socket by name during shutdown, so a still-dying instance can
+    // delete the socket a freshly spawned instance just bound at the same fixed path.
+    for (const auto &exe : Utils::getOpenVpnExeNames()) {
+        ProcessKill::terminateAndWait(exe);
     }
 }
 

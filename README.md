@@ -25,7 +25,7 @@ The Windscribe VPN desktop application hides your physical location, blocks ads 
 - Windows 10/11 amd64 (minimum build 17763)
 - Windows 11 arm64
 - Windows Server 2022 amd64
-- macOS 13+ (amd64, arm64)
+- macOS 14.4+ (amd64, arm64)
 - Ubuntu 22.04+ (amd64, arm64)
 - Fedora 36+ (amd64, arm64)
 - openSUSE Leap 15.6 amd64
@@ -36,7 +36,7 @@ The Windscribe VPN desktop application hides your physical location, blocks ads 
 
 ### Prerequisites
 
-- Windows 10/11 x86_64.  We do not currently support building on the WoA (arm64) platform.
+- Windows 10/11 x86_64, or Windows 11 arm64. On arm64 hardware the build is native and targets arm64. Pass `--arm64` only to cross-compile an arm64 target from x86_64 hardware.
 - Install [git](https://git-scm.com/downloads). When installing Git, you can stick with all the default options presented to you by the installer.
 - Clone the repository.
 - Install Visual Studio Community Edition 2022.
@@ -91,20 +91,18 @@ Go to subfolder `tools/deps` and run the following scripts in order. Append `--a
 ```
 install_openvpn_dco
 install_wintun
-install_wireguard
-install_amneziawg
 install_wstunnel
 ```
 
 ### Build the Windscribe 2.0 app
 
-Go to subfolder `tools` and run `build_all --dev-mode`. Assuming all goes well with the build, the installer will be placed in `build-exe`. The `--dev-mode` flag disables run-time signature verification and relaxes the security checks, which is what you want for local development and debugging. Omitting `--dev-mode` produces a build that performs run-time signature verification on its executables; that build must be code-signed with `--sign-app` (and `--sign-installer` / `--sign-bootstrap` as needed), using the certificate from the [Install signing certificate](#install-signing-certificate-optional) section above, otherwise it will reject its own unsigned executables at run time. Append `--arm64` to the command to build for Windows arm64.
+Go to subfolder `tools` and run `build_all --dev-mode`. Assuming all goes well with the build, the installer will be placed in `build-exe`. The `--dev-mode` flag disables run-time signature verification and relaxes the security checks, which is what you want for local development and debugging. Omitting `--dev-mode` produces a build that performs run-time signature verification on its executables; that build must be code-signed with `--sign-app` (and `--sign-installer` / `--sign-bootstrap` as needed), using the certificate from the [Install signing certificate](#install-signing-certificate-optional) section above, otherwise it will reject its own unsigned executables at run time. On x86_64 hardware, append `--arm64` to cross-compile for Windows arm64. On arm64 hardware that is the default, and the compiler, linker, and vcpkg host tools are the native arm64 tools.
 
 See `build_all --help` for other build options.
 
 ### Logs
 
-- Client app, location pings and installer helper: `C:/Users/<user_name>/AppData/Local/Windscribe/Windscribe2`
+- Client app, OpenVPN log, location pings and installer helper: `C:/Users/<user_name>/AppData/Local/Windscribe/Windscribe2`
 - Service: `<Windscribe_installation_path>/windscribeservice.log`
 - Installer: `C:/ProgramData/Windscribe/installer.log` (previous attempt in `installer.log.1`)
 - Uninstaller: `C:/ProgramData/Windscribe/uninstaller.log` (previous run in `uninstaller.log.1`)
@@ -114,7 +112,7 @@ See `build_all --help` for other build options.
 
 ### Prerequisites
 
-- macOS Ventura (13) or newer.
+- macOS Sonoma (14.4) or newer.
 - Install Xcode 15 or newer.
     - You must agree to the Xcode license (`sudo xcodebuild -license`)
     - You may need to run `xcodebuild -runFirstLaunch` or the Xcode GUI once if CMake complains that it can't find the compiler when building using the Xcode generator.
@@ -163,8 +161,6 @@ git clone https://github.com/Windscribe/ws-vcpkg-registry.git
 Go to subfolder `tools/deps` and run the following scripts in order. Libraries will be placed in `build-libs`.
 
 ```
-install_wireguard
-install_amneziawg
 install_wstunnel
 ```
 
@@ -183,6 +179,7 @@ See `build_all --help` for other build options.
 - Client app and location pings: `/Users/<user_name>/Library/Application Support/Windscribe/Windscribe2`
 - Installer: `/Users/<user_name>/Library/Application Support/Windscribe/Windscribe/log_installer.txt`
 - Helper: `/Library/Logs/com.windscribe.helper.macos/helper_log.txt`
+- OpenVPN: `/etc/windscribe/openvpn.log`
 
 ## Linux Build Process
 
@@ -200,7 +197,7 @@ The repository contains Dockerfile to simplify building process. Skip all the ot
 ```
 - Build all the dependencies:
 ```bash
-  for i in qt wireguard amneziawg wstunnel; do sudo docker run --rm -v .:/w ws-builder /bin/bash -c "cd /w/tools/deps/ && ./install_$i"; done
+  for i in qt wstunnel; do sudo docker run --rm -v .:/w ws-builder /bin/bash -c "cd /w/tools/deps/ && ./install_$i"; done
 ```
 - Build the application:
 ```bash
@@ -237,8 +234,6 @@ git clone https://github.com/Windscribe/ws-vcpkg-registry.git
 Go to subfolder `tools/deps` and run the following scripts in order. Libraries will be placed in `build-libs`.
 
 ```
-install_wireguard
-install_amneziawg
 install_wstunnel
 ```
 
@@ -253,6 +248,7 @@ The application installs to `/opt/windscribe`.
 ### Logs
 - Client app and location pings: `~/.local/share/Windscribe/Windscribe2`
 - Helper: `/var/log/windscribe/helper_log.txt`
+- OpenVPN: `/var/run/windscribe/openvpn.log`
 
 ## Contributing
 

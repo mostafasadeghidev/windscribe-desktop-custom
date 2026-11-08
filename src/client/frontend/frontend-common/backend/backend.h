@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <functional>
+#include <QTimer>
 #include <wsnet/WSNet.h>
 
 #include "connectstatehelper.h"
@@ -49,6 +50,9 @@ public:
     void clearLoginCredentials();
     void setEmployeeAccessAllowed(bool allowed);
     void sendConnect(const LocationID &lid, const types::ConnectionSettings &connectionSettings = types::ConnectionSettings(types::Protocol(), 0, true));
+    // The app retrying a connection it was already making, which a command waiting on that connection follows rather than
+    // reporting as replaced by another command.
+    void sendAutomaticConnect(const LocationID &lid);
     void sendDisconnect(DISCONNECT_REASON reason = DISCONNECTED_BY_USER);
     // Sets the session-only "ignore SSL errors" state on the engine (pushed to wsnet, never persisted).
     // Enabling is refused unless the engine has reported an SSL error this session. Returns true if the
@@ -118,8 +122,6 @@ public:
     void sendUpdateVersion(qint64 mainWindowHandle);
     void cancelUpdateVersion();
 
-    void sendMakeHostsFilesWritableWin();
-
     bool haveAutoLoginCredentials(QString &username, QString &password);
 
     void updateCurrentNetworkInterface();
@@ -129,7 +131,15 @@ public:
     // it is one of the OS's own resolvers, or a local stub that forwards to them.
     bool wouldDnsServerLeak(const std::wstring &dnsServer);
 
-    void rotateIp();
+    // Refused while not connected or while another rotation is in progress; a request made during the settling period after the
+    // last one waits it out. Every accepted request ends in ipRotateResult().
+    bool rotateIp();
+    bool isIpRotateInFlight() const { return isIpRotateInFlight_; }
+    bool isIpRotateReady() const { return !isIpRotateInFlight_ && !ipRotateCooldownTimer_.isActive(); }
+    // From a rotation request until the address after it arrives: the address known until then may be the one the rotation
+    // replaced, so it must not be pinned.
+    bool isAwaitingRotatedIp() const { return isAwaitingRotatedIp_; }
+    uint connectRequestCount() const { return connectRequestCount_; }
 
     QString getCurrentConnectingHostname() const;
     void fetchControldDevices(const QString &apiKey);
@@ -152,7 +162,9 @@ private slots:
     void onEngineUpdateDownloaded(const QString &path);
     void onEngineUpdateVersionChanged(uint progressPercent, const UPDATE_VERSION_STATE &state, const UPDATE_VERSION_ERROR &error);
     void onEngineMyIpUpdated(const QString &ip, bool isDisconnected);
-    void onEngineConnectStateChanged(CONNECT_STATE state, DISCONNECT_REASON reason, ConnectError err, const LocationID &locationId);
+    void onEngineIpRotateResult(bool success);
+    void onIpRotateCooldownTimeout();
+    void onEngineConnectStateChanged(CONNECT_STATE state, DISCONNECT_REASON reason, ConnectError err, const QString &errorDetail, const LocationID &locationId);
     void onEngineStatisticsUpdated(quint64 bytesIn, quint64 bytesOut, bool isTotalBytes);
     void onEngineProtocolPortChanged(const types::Protocol &protocol, const uint port);
     void onEngineRobertFiltersUpdated(bool success, const QVector<api_responses::RobertFilter> &filters);
@@ -194,7 +206,6 @@ private slots:
     void onEngineSendUserWarning(USER_WARNING_TYPE userWarningType);
     void onEnginePacketSizeChanged(const types::EngineSettings &engineSettings);
     void onEnginePacketSizeDetectionStateChanged(bool on, bool isError);
-    void onEngineHostsFileBecameWritable();
     void onEngineConnectingHostnameChanged(const QString &hostname);
     void onEngineBridgeApiAvailabilityChanged(bool isAvailable);
 
@@ -269,7 +280,9 @@ signals:
     void connectionIdChanged(const QString &connId);
 
     void bridgeApiAvailabilityChanged(bool isAvailable);
+    void ipRotateStarted();
     void ipRotateResult(bool success);
+    void ipRotateCooldownFinished();
 
     void clearWifiHistoryFinished(bool success);
 
@@ -323,6 +336,15 @@ private:
     QString currentConnectingHostname_;
     bool tunnelTestSuccessful_;
     bool bridgeApiAvailable_;
+    bool isIpRotateInFlight_ = false;
+    bool isIpRotateWaitingForCooldown_ = false;
+    bool isAwaitingRotatedIp_ = false;
+    // How long rotation stays barred after the engine reports an outcome, so the address is not asked to change again
+    // before it has settled.
+    static constexpr int kIpRotateCooldownMs = 2000;
+    QTimer ipRotateCooldownTimer_;
+    uint connectRequestCount_ = 0;
 
     void triggerAutoConnect(const types::NetworkInterface &interface);
+    void startConnect(const LocationID &lid, const types::ConnectionSettings &connectionSettings, bool isNewRequest);
 };

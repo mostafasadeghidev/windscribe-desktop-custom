@@ -13,9 +13,11 @@
 #include "utils/networkingvalidation.h"
 #include "utils/utils.h"
 #include "utils/ws_assert.h"
+#include "version/ws_version.h"
 
 #ifdef Q_OS_WIN
     #include "engine/adapterutils_win.h"
+    #include "utils/network_utils/network_utils_win.h"
     #include "utils/winutils.h"
 #elif defined (Q_OS_LINUX)
     #include <sys/socket.h>
@@ -30,7 +32,11 @@
 
 OpenVPNConnection::OpenVPNConnection(QObject *parent, Helper *helper, types::Protocol protocol, const OpenVpnSessionParams &sessionParams) :
     IConnection(parent, protocol), helper_(helper), sessionParams_(sessionParams),
-    bStopThread_(false), connectRetryTimer_(io_context_), currentState_(STATUS_DISCONNECTED),
+    bStopThread_(false), connectRetryTimer_(io_context_),
+#ifdef Q_OS_WIN
+    adapterReadyTimer_(io_context_),
+#endif
+    currentState_(STATUS_DISCONNECTED),
     isRedirectGatewayObserved_(false), privKeyPassword_("")
 {
     capabilities_ = openVpnConnectorCapabilities();
@@ -253,9 +259,26 @@ void OpenVPNConnection::setCurrentStateAndEmitError(OpenVPNConnection::CONNECTIO
     emit error(err);
 }
 
+QString OpenVPNConnection::takeConnectErrorDetail()
+{
+    QString detail;
+    detail.swap(connectErrorDetail_);
+    return detail;
+}
+
 OpenVPNConnection::CONNECTION_STATUS OpenVPNConnection::getCurrentState() const
 {
     return currentState_.load();
+}
+
+ConnectError OpenVPNConnection::launchFailureError() const
+{
+    // A custom config the daemon rejected carries the fatal line. An official config keeps the
+    // launch-failure code: the custom-config dialog switches the selected location.
+    if (isCustomConfig_ && !connectErrorDetail_.isEmpty()) {
+        return ConnectError::kCustomConfigInvalid;
+    }
+    return ConnectError::kLocalProcessLaunchFailure;
 }
 
 bool OpenVPNConnection::runOpenVPN()
@@ -285,7 +308,7 @@ bool OpenVPNConnection::runOpenVPN()
     // PID so we can verify the management peer once connected.
     unsigned int port = 0;
     unsigned long pid = 0;
-    const bool ok = helper_->executeOpenVPN(config_, httpProxy, httpPort, socksProxy, socksPort, port, pid);
+    const bool ok = helper_->executeOpenVPN(config_, httpProxy, httpPort, socksProxy, socksPort, port, pid, connectErrorDetail_);
     if (ok) {
         stateVariables_.openVpnPort = port;
         stateVariables_.openVpnPid = pid;
@@ -293,7 +316,7 @@ bool OpenVPNConnection::runOpenVPN()
     return ok;
 #else
     // On POSIX the management interface is a root-owned unix domain socket (fixed path); no port.
-    return helper_->executeOpenVPN(config_, httpProxy, httpPort, socksProxy, socksPort);
+    return helper_->executeOpenVPN(config_, httpProxy, httpPort, socksProxy, socksPort, connectErrorDetail_);
 #endif
 }
 
@@ -358,19 +381,26 @@ void OpenVPNConnection::funcRunOpenVPN()
 
     // run openvpn process. On Windows this also populates stateVariables_.openVpnPort/openVpnPid
     // (OpenVPN picks its own management port and the helper reports it back).
-    while(!runOpenVPN())
-    {
+    while(!runOpenVPN()) {
         qCDebug(LOG_CONNECTION) << "Can't run OpenVPN";
 
-        if (retries >= 2)
-        {
-            qCCritical(LOG_CONNECTION) << "Can't run openvpn process";
-            setCurrentStateAndEmitError(STATUS_DISCONNECTED, ConnectError::kLocalProcessLaunchFailure);
+        if (bStopThread_) {
+            setCurrentStateAndEmitDisconnected(STATUS_DISCONNECTED);
             return;
         }
-        if (bStopThread_)
-        {
-            setCurrentStateAndEmitDisconnected(STATUS_DISCONNECTED);
+
+        // The helper sets the detail only when OpenVPN exited before binding its management
+        // socket and the log has a fatal line (rejected directive, Options error). The same
+        // config fails the same way, so skip the remaining attempts. An empty detail is a
+        // launch failure that may be transient, and keeps the retries below.
+        if (!connectErrorDetail_.isEmpty()) {
+            qCCritical(LOG_CONNECTION) << "OpenVPN failed to start due to a rejected directive or options error";
+            setCurrentStateAndEmitError(STATUS_DISCONNECTED, launchFailureError());
+            return;
+        }
+        if (retries >= 2) {
+            qCCritical(LOG_CONNECTION) << "Can't run openvpn process";
+            setCurrentStateAndEmitError(STATUS_DISCONNECTED, launchFailureError());
             return;
         }
         retries++;
@@ -398,6 +428,29 @@ void OpenVPNConnection::funcFailAdapterSetup()
 
     qCCritical(LOG_CONNECTION) << "Could not create the OpenVPN adapter";
     setCurrentStateAndEmitError(STATUS_DISCONNECTED, ConnectError::kAdapterNotInstalled);
+}
+#endif
+
+#ifdef Q_OS_WIN
+void OpenVPNConnection::waitForAdapterReady(const boost::system::error_code &err)
+{
+    // Every path that supersedes this wait (a newer CONNECTED, RECONNECTING, a disconnect) cancels the
+    // timer on this io_context thread; the checks below cover a completion already queued at that point.
+    if (err || bStopThread_ || getCurrentState() != STATUS_CONNECTED) {
+        return;
+    }
+
+    const bool isPreferred = NetworkUtils_win::isIpv4AddressPreferred(connectionAdapterInfo_.ifIndex(),
+                                                                      connectionAdapterInfo_.adapterIpV4());
+    if (!isPreferred && adapterReadyElapsed_.elapsed() < NetworkUtils_win::kAddressPreferredMaxWaitMs) {
+        adapterReadyTimer_.expires_after(std::chrono::milliseconds(NetworkUtils_win::kAddressPreferredPollMs));
+        adapterReadyTimer_.async_wait(boost::bind(&OpenVPNConnection::waitForAdapterReady, this, boost::asio::placeholders::error));
+        return;
+    }
+
+    qCInfo(LOG_CONNECTION) << "OpenVPN adapter" << (isPreferred ? "address preferred" : "wait timed out")
+                           << "after" << adapterReadyElapsed_.elapsed() << "ms";
+    emit connected(connectionAdapterInfo_);
 }
 #endif
 
@@ -536,7 +589,7 @@ void OpenVPNConnection::handleRead(const boost::system::error_code &err, size_t 
         // skip log out BYTECOUNT
         if (!serverReply.contains(">BYTECOUNT:", Qt::CaseInsensitive))
         {
-            qCInfo(LOG_OPENVPN) << serverReply;
+            qCInfo(LOG_OPENVPN) << redactManagementLine(serverReply);
         }
         if (serverReply.contains("HOLD:Waiting for hold release", Qt::CaseInsensitive))
         {
@@ -711,7 +764,13 @@ void OpenVPNConnection::handleRead(const boost::system::error_code &err, size_t 
                     qCCritical(LOG_CONNECTION) << "Can't parse CONNECTED,SUCCESS control message";
                 }
                 setCurrentState(STATUS_CONNECTED);
+#ifdef Q_OS_WIN
+                adapterReadyTimer_.cancel();
+                adapterReadyElapsed_.start();
+                waitForAdapterReady(boost::system::error_code());
+#else
                 emit connected(connectionAdapterInfo_);
+#endif
             }
             else if (serverReply.contains("CONNECTED,ERROR", Qt::CaseInsensitive))
             {
@@ -723,6 +782,9 @@ void OpenVPNConnection::handleRead(const boost::system::error_code &err, size_t 
                 stateVariables_.isAcceptSigTermCommand_ = false;
                 stateVariables_.bWasStateNotification = false;
                 setCurrentState(STATUS_CONNECTED_TO_SOCKET);
+#ifdef Q_OS_WIN
+                adapterReadyTimer_.cancel();
+#endif
                 emit reconnecting();
             }
         }
@@ -811,6 +873,9 @@ void OpenVPNConnection::handleRead(const boost::system::error_code &err, size_t 
 
 void OpenVPNConnection::funcDisconnect()
 {
+#ifdef Q_OS_WIN
+    adapterReadyTimer_.cancel();
+#endif
     int curState = getCurrentState();
     if (!stateVariables_.bSigTermSent && (curState == STATUS_CONNECTED_TO_SOCKET || curState == STATUS_CONNECTED))
     {
@@ -905,6 +970,18 @@ QString OpenVPNConnection::sanitizeString(const QString &s)
     result.replace("\"", "\\\"");
     result.replace("\t", "\\t");
     return result;
+}
+
+QString OpenVPNConnection::redactManagementLine(const QString &line)
+{
+    // OpenVPN echoes management commands into its log: it masks the password itself, but not the username.
+    static const QRegularExpression re(R"re(MANAGEMENT: CMD 'username "Auth" "((?:[^"\\]|\\.)*)")re");
+    const QRegularExpressionMatch match = re.match(line);
+    if (!match.hasMatch()) {
+        return line;
+    }
+    QString result = line;
+    return result.replace(match.capturedStart(1), match.capturedLength(1), Utils::redactCredential(match.captured(1)));
 }
 
 bool OpenVPNConnection::parsePushReply(const QString &reply, AdapterGatewayInfo &outConnectionAdapterInfo, bool &outRedirectDefaultGateway)

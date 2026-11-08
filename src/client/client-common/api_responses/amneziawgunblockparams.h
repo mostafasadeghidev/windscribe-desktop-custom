@@ -7,6 +7,8 @@ namespace api_responses {
 
 struct AmneziawgUnblockParam
 {
+    static inline const QString kDefaultTitle = "Z - API Blocked";
+
     QString id;
     QString title;
     QStringList countries;
@@ -24,8 +26,20 @@ struct AmneziawgUnblockParam
     // I1, I2, I3, I4, I5 (in order).  Only I1 is mandatory, the others may not exist.
     QStringList iValues;
 
+    // AmneziaWG 3.x. Ranges are "N" or "N-M"; booleans are "true"/"false"; empty means not set.
+    QString headerProtectionKey;  // base64, 32 bytes
+    QString contentPaddingAddition;
+    QString rekeyAfterTime;
+    QString rekeyTimeout;
+    QString rejectAfterTime;
+    QString keepaliveTimeout;
+    QString maxHandshakeAttempts;
+    QString randomTrailers;
+    QString disableCookies;
+
     bool isValid() const;
     bool hasPrintableObfuscationValues() const;
+    QStringList v3Values() const;
     void setDefault();
 };
 

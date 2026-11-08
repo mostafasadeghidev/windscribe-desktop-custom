@@ -3,17 +3,17 @@
     "default-registry": {
       "kind": "git",
       "repository": "https://github.com/microsoft/vcpkg",
-      "reference": "e140b1fde236eb682b0d47f905e65008a191800f",
-      "baseline": "e140b1fde236eb682b0d47f905e65008a191800f"
+      "reference": "0699a19d0c6386247ce50d4dedbb8217d484d536",
+      "baseline": "0699a19d0c6386247ce50d4dedbb8217d484d536"
     },
     "registries": [
       {
         "kind": "git",
         "repository": "https://github.com/Windscribe/ws-vcpkg-registry",
-        "reference": "ef9b1277cc637891ca2b17638e21aa5d71f8f379",
-        "baseline": "ef9b1277cc637891ca2b17638e21aa5d71f8f379",
+        "reference": "dccef93be8c0fe34b513317176d749ab70cc2718",
+        "baseline": "dccef93be8c0fe34b513317176d749ab70cc2718",
         "packages": [
-          "7zip",
+          "amneziawg",
           "boost-context",
           "boost-process",
           "c-ares",
@@ -33,7 +33,8 @@
           "scapix-bin",
           "skyr-url",
           "spdlog",
-          "tap-windows6-driver"
+          "tap-windows6-driver",
+          "wireguard-windows"
         ]
       }
     ]

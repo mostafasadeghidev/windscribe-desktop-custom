@@ -54,12 +54,18 @@ private:
 
     boost::asio::io_context io_context_;
     boost::asio::steady_timer connectRetryTimer_;
+#ifdef Q_OS_WIN
+    // Holds connected() back until the adapter address is Preferred; see NetworkUtils_win::kAddressPreferredMaxWaitMs.
+    boost::asio::steady_timer adapterReadyTimer_;
+    QElapsedTimer adapterReadyElapsed_;
+#endif
 
     QString config_;
     QString username_;
     QString password_;
     QString privKeyPassword_;
     bool isCustomConfig_;
+    QString connectErrorDetail_;
     // Set once startConnect() runs; teardown() must not issue the mac route delete for a connector
     // that never dialed (the helper would be hit with another session's ip).
     bool isDialed_ = false;
@@ -72,6 +78,8 @@ private:
     void setCurrentStateAndEmitError(CONNECTION_STATUS state, ConnectError err);
     CONNECTION_STATUS getCurrentState() const;
     bool runOpenVPN();
+    ConnectError launchFailureError() const;
+    QString takeConnectErrorDetail() override;
 
 #ifdef Q_OS_WIN
     using ManagementSocket = boost::asio::ip::tcp::socket;
@@ -137,6 +145,7 @@ private:
     void funcRunOpenVPN();
 #ifdef Q_OS_WIN
     void funcFailAdapterSetup();
+    void waitForAdapterReady(const boost::system::error_code &err);
 #endif
     void asyncConnectToManagementSocket();
     void retryConnectToManagementSocket(const boost::system::error_code& err);
@@ -157,6 +166,7 @@ private:
     void continueWithPrivKeyPasswordImpl();
 
     static QString sanitizeString(const QString &s);
+    static QString redactManagementLine(const QString &line);
 
     bool parsePushReply(const QString &reply, AdapterGatewayInfo &outConnectionAdapterInfo, bool &outRedirectDefaultGateway);
     bool parseDeviceOpenedReply(const QString &reply, QString &outDeviceName);

@@ -202,6 +202,33 @@ void TestOpenVPNConnection::testPrepareCustomConfigInjectsDnsAndClearsCredential
     QVERIFY(conn.password_.isEmpty());
 }
 
+void TestOpenVPNConnection::testRunOpenVpnCustomConfigDetailEmitsCustomConfigInvalid()
+{
+    OpenVPNConnection conn(nullptr, helper_, types::Protocol::OPENVPN_UDP, makeSessionParams());
+    conn.isCustomConfig_ = true;
+    conn.connectErrorDetail_ = "Windscribe: directive not permitted in config: up (config.ovpn:12)";
+
+    QCOMPARE(conn.launchFailureError(), ConnectError::kCustomConfigInvalid);
+    QCOMPARE(conn.takeConnectErrorDetail(), QString("Windscribe: directive not permitted in config: up (config.ovpn:12)"));
+    // Consumed once, so a later error cannot reuse the line.
+    QVERIFY(conn.takeConnectErrorDetail().isEmpty());
+    // The detail is gone, so a repeat of the same failure is a plain launch failure.
+    QCOMPARE(conn.launchFailureError(), ConnectError::kLocalProcessLaunchFailure);
+}
+
+void TestOpenVPNConnection::testRunOpenVpnEmptyDetailEmitsLaunchFailure()
+{
+    OpenVPNConnection conn(nullptr, helper_, types::Protocol::OPENVPN_UDP, makeSessionParams());
+    conn.isCustomConfig_ = true;
+    QCOMPARE(conn.launchFailureError(), ConnectError::kLocalProcessLaunchFailure);
+
+    // An official config keeps the launch-failure code even when the daemon left a fatal line.
+    // The custom-config dialog switches the selected location, which must not happen here.
+    conn.isCustomConfig_ = false;
+    conn.connectErrorDetail_ = "Windscribe: directive not permitted in config: up (config.ovpn:12)";
+    QCOMPARE(conn.launchFailureError(), ConnectError::kLocalProcessLaunchFailure);
+}
+
 void TestOpenVPNConnection::testPrepareInvalidNodeIpFails()
 {
     OpenVPNConnection conn(nullptr, helper_, types::Protocol::OPENVPN_UDP, makeSessionParams());
@@ -387,6 +414,29 @@ void TestOpenVPNConnection::testSanitizeString()
 
     for (const Row &row : rows) {
         QCOMPARE(OpenVPNConnection::sanitizeString(row.in), row.out);
+    }
+}
+
+void TestOpenVPNConnection::testRedactManagementLine()
+{
+    struct Row {
+        QString in;
+        QString out;
+    };
+    const QVector<Row> rows = {
+        {">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"xq7example-user1\"'",
+         ">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"xq***\"'"},
+        {">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"a\\\"b\\\\c\"'",
+         ">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"a\\***\"'"},
+        {">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"\"'",
+         ">LOG:1792769252,D,MANAGEMENT: CMD 'username \"Auth\" \"\"'"},
+        {">LOG:1792769252,D,MANAGEMENT: CMD 'password [...]'", ">LOG:1792769252,D,MANAGEMENT: CMD 'password [...]'"},
+        {">LOG:1792769252,D,MANAGEMENT: CMD 'username \"HTTP Proxy\" \"proxyuser\"'",
+         ">LOG:1792769252,D,MANAGEMENT: CMD 'username \"HTTP Proxy\" \"proxyuser\"'"},
+        {">PASSWORD:Need 'Auth' username/password", ">PASSWORD:Need 'Auth' username/password"},
+    };
+    for (const auto &row : rows) {
+        QCOMPARE(OpenVPNConnection::redactManagementLine(row.in), row.out);
     }
 }
 

@@ -14,7 +14,7 @@ This application provides secure, private internet access by routing your traffi
 
 **Supported Platforms**:
 - Windows 10/11 (amd64, arm64), Windows Server 2022
-- macOS 13+ (amd64, arm64)
+- macOS 14.4+ (amd64, arm64)
 - Ubuntu 22.04+, Fedora 36+, openSUSE Leap 15.6, Arch, immutable distros (amd64, arm64)
 
 ### Key Features
@@ -38,7 +38,7 @@ client-desktop/
 ├── cmake/                  # CMake configuration files
 ├── data/                   # Application resources and test data
 ├── build/                  # Build output (created during build)
-├── build-libs/            # Compiled dependencies (WireGuard, WSTunnel, etc.)
+├── build-libs/            # Compiled dependencies (WSTunnel, Wintun, etc.)
 ├── build-exe/             # Final installers/packages (created during build)
 └── CMakeLists.txt         # Root build configuration
 ```
@@ -132,7 +132,6 @@ Windscribe's custom networking library with anti-censorship capabilities. It is 
 - **`build_all.py`** - Main Python build orchestrator
 - **`base/`** - Python build utilities
 - **`deps/`** - Dependency installation scripts
-  - `install_wireguard` - WireGuard library installer
   - `install_wstunnel` - WSTunnel binary installer
   - `install_openvpn_dco` - OpenVPN DCO driver (Windows)
   - `install_wintun` - Wintun driver (Windows)
@@ -176,7 +175,7 @@ Most components have separate implementations:
 - Wintun driver (Windows userspace)
 - wireguard-nt (Windows native driver)
 - WireGuard kernel module (Linux)
-- WireGuard-go (macOS userspace)
+- amneziawg-go (macOS/Linux userspace, used for both WireGuard and AmneziaWG)
 
 **OpenVPN**:
 - OpenVPN 2.x process
@@ -268,9 +267,14 @@ Most components have separate implementations:
 
 ### Prerequisites
 
-Install vcpkg dependencies:
-- **Windows**: `tools\vcpkg\install_ci\vcpkg_install.bat`
-- **macOS/Linux**: `tools/vcpkg/install_ci/vcpkg_install.sh`
+Install vcpkg from the [ws-vcpkg-registry](https://github.com/Windscribe/ws-vcpkg-registry), then set `VCPKG_ROOT` to the path you chose:
+```bash
+git clone https://github.com/Windscribe/ws-vcpkg-registry.git
+# Windows
+ws-vcpkg-registry\install-vcpkg\vcpkg_install.bat C:\path\to\vcpkg
+# macOS/Linux
+./ws-vcpkg-registry/install-vcpkg/vcpkg_install.sh /path/to/vcpkg
+```
 
 Install Python build dependencies:
 ```bash
@@ -290,13 +294,11 @@ Navigate to `tools/deps/` and run installation scripts **in order**:
 ```bash
 install_openvpn_dco [--arm64]
 install_wintun [--arm64]
-install_wireguard [--arm64]
 install_wstunnel [--arm64]
 ```
 
 **macOS/Linux**:
 ```bash
-./install_wireguard
 ./install_wstunnel
 ```
 
@@ -325,7 +327,8 @@ From the `tools/` directory:
 # Signed build (requires certificate setup)
 ./build_all --sign --use-local-secrets
 
-# Windows ARM64 build
+# Windows ARM64 cross-compile from x64 hardware. On ARM64 hardware this is the default
+# and the compiler, linker, and vcpkg host tools are the native ARM64 tools.
 ./build_all --arm64
 
 # Linux CLI-only build

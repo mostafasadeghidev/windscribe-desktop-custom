@@ -7,6 +7,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 project(installer)
 
 find_package(fmt CONFIG REQUIRED)
+find_package(LibArchive REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS
              Widgets
@@ -21,11 +22,13 @@ set(SOURCES
     ../../../../client/client-common/utils/languagesutil.cpp
     ../../../../client/client-common/utils/servicecontrolmanager.cpp
     ../../../../client/client-common/utils/wincryptutils.cpp
+    ../../../../client/client-common/utils/executable_signature/executable_signature.cpp
+    ../../../../client/client-common/utils/executable_signature/executable_signature_win.cpp
     ../utils/applicationinfo.cpp
     ../utils/path.cpp
     ../utils/utils.cpp
     ../utils/windscribepathcheck.cpp
-    ../utils/archive.cpp
+    ../utils/payloadextractor.cpp
     ../utils/persistent_log.cpp
     installer/installer.cpp
     installer/installer_shim.cpp
@@ -83,6 +86,10 @@ target_link_libraries(installer
     Fwpuclnt
     Ws2_32
     Crypt32
+    wintrust
+    LibArchive::LibArchive
+    # libarchive calls BCrypt on Windows, but the vcpkg port does not add bcrypt to LibArchive::LibArchive for static builds
+    bcrypt
     spdlog::spdlog_header_only
     fmt::fmt-header-only
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg

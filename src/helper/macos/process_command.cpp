@@ -17,7 +17,6 @@
 #include "firewallonboot.h"
 #include "installer/staging.h"
 #include "ipc/helper_security.h"
-#include "macspoofingonboot.h"
 #include "macutils.h"
 #include "ovpn.h"
 #include "routes_manager/routes_manager.h"
@@ -27,6 +26,7 @@
 #include "wireguard/wireguardcontroller.h"
 #include "../common/io_posix.h"
 #include "../common/ovpn_mgmt_posix.h"
+#include "../common/process_kill_posix.h"
 #include "../common/spawn_posix.h"
 #include "../common/validation_posix.h"
 #include "clear_wifi_history/clear_wifi_history.h"
@@ -138,7 +138,7 @@ std::string executeOpenVPN(const std::string &pars, uid_t clientUid)
     // The proxy address must be an IP literal: the GUI restricts it to one (NetworkingValidation::
     // isIp) and no other path sets it. Validate here too rather than trust the client — an invalid
     // value is dropped so it can't reach the OpenVPN config the helper writes as root. The proxy
-    // lines are appended after OvpnDirectiveWhitelist::filterConfig, so they aren't otherwise
+    // lines are passed on the OpenVPN command line after --config, so they aren't otherwise
     // filtered. isValidIpAddress also rejects whitespace, subsuming the previous whitespace guard.
     if (!httpProxy.empty() && !Validation::isValidIpAddress(httpProxy)) {
         spdlog::warn("executeOpenVPN: invalid httpProxy, ignoring");
@@ -154,7 +154,7 @@ std::string executeOpenVPN(const std::string &pars, uid_t clientUid)
     // is world-traversable, so fail rather than fall back to a world-connectable socket.
     if (clientUid == (uid_t)-1) {
         spdlog::error("executeOpenVPN: client uid unknown; refusing to start OpenVPN");
-        return serializeResult(false);
+        return serializeResult(false, std::string());
     }
     std::string mgmtClientUser;
     OvpnMgmt::mgmtClientUserForUid(clientUid, mgmtClientUser);
@@ -163,9 +163,10 @@ std::string executeOpenVPN(const std::string &pars, uid_t clientUid)
     // socket and we spawn a new instance.
     OvpnMgmt::killOpenVPN();
 
-    if (!OVPN::writeOVPNFile(std::string(Utils::kHelperBinDir) + "/dns.sh", config, httpProxy, httpPort, socksProxy, socksPort, mgmtClientUser)) {
+    std::vector<std::string> extraArgs;
+    if (!OVPN::writeOVPNFile(std::string(Utils::kHelperBinDir) + "/dns.sh", config, httpProxy, httpPort, socksProxy, socksPort, mgmtClientUser, extraArgs)) {
         spdlog::error("Could not write OpenVPN config");
-        return serializeResult(false);
+        return serializeResult(false, std::string());
     }
 
     const std::string ovpnPath = Utils::getExePath() + "/" WS_PRODUCT_NAME_LOWER "openvpn";
@@ -173,26 +174,34 @@ std::string executeOpenVPN(const std::string &pars, uid_t clientUid)
     ExecutableSignature sigCheck;
     if (!sigCheck.verify(ovpnPath)) {
         spdlog::error("OpenVPN executable signature incorrect: {}", sigCheck.lastError());
-        return serializeResult(false);
+        return serializeResult(false, std::string());
     }
 
     Spawn::Options opts;
     opts.cwd = WS_POSIX_CONFIG_DIR;
-    std::vector<std::string> args = {"--config", WS_POSIX_CONFIG_DIR "/config.ovpn"};
+    // --log before --config. OpenVPN fully parses the file when it sees --config, and a
+    // non-whitelisted directive is fatal. --log is what attaches the file, so it has to be parsed
+    // first or that fatal exits before anything is written. A log directive in the file cannot
+    // replace it: the parser allowlist rejects that name, and the redirect ignores a second --log.
+    // Later arguments still override the file.
+    std::vector<std::string> args = {"--log", OVPN::logPath(),
+                                     "--config", WS_POSIX_CONFIG_DIR "/config.ovpn"};
+    args.insert(args.end(), extraArgs.begin(), extraArgs.end());
     pid_t ovpnPid = 0;
     if (!Spawn::spawnDetached(ovpnPath, args, opts, &ovpnPid)) {
-        return serializeResult(false);
+        return serializeResult(false, std::string());
     }
 
     // The non-root client must be able to connect() to the management socket OpenVPN creates as
     // root. If it never appears or can't be made connectable, this connection is unusable: report
     // failure and kill the OpenVPN we just spawned so the client's retry doesn't leave an orphaned
     // process fighting over the same socket path (mirrors the Windows path).
-    if (!OvpnMgmt::waitAndRelaxPerms(clientUid, ovpnPid)) {
+    std::string detail;
+    if (!OvpnMgmt::waitAndRelaxPerms(clientUid, ovpnPid, OVPN::logPath(), detail)) {
         OvpnMgmt::killOpenVPN();
-        return serializeResult(false);
+        return serializeResult(false, detail);
     }
-    return serializeResult(true);
+    return serializeResult(true, std::string());
 }
 
 std::string executeTaskKill(const std::string &pars)
@@ -226,8 +235,8 @@ std::string executeTaskKill(const std::string &pars)
         success = true;
     } else if (target == kTargetCtrld) {
         spdlog::info("Killing ctrld processes");
-        Utils::executeCommand("pkill", {"-f", WS_PRODUCT_NAME_LOWER "ctrld"});
-        success = true;
+        // The next ctrld binds the same 127.0.0.1:53 and exits if a dying instance still holds it.
+        success = ProcessKill::terminateAndWait(WS_PRODUCT_NAME_LOWER "ctrld");
     } else {
         spdlog::error("Did not kill processes for type {}", (int)target);
         success = false;
@@ -252,12 +261,14 @@ std::string stopWireGuard(const std::string &pars)
 std::string configureWireGuard(const std::string &pars)
 {
     std::string clientPrivateKey, clientIpAddress, clientDnsAddressList, peerPublicKey,
-                peerPresharedKey, peerEndpoint, allowedIps;
+                peerPresharedKey, peerEndpoint, allowedIps, persistentKeepalive;
     uint16_t listenPort;
     CmdDnsManager dnsManager;
     AmneziawgConfig amneziawgConfig;
+    bool disconnectOnStaleHandshake = true;
     deserializePars(pars, clientPrivateKey, clientIpAddress, clientDnsAddressList, peerPublicKey,
-                    peerPresharedKey, peerEndpoint, allowedIps, listenPort, dnsManager, amneziawgConfig);
+                    peerPresharedKey, peerEndpoint, allowedIps, listenPort, dnsManager, amneziawgConfig, persistentKeepalive,
+                    disconnectOnStaleHandshake);
 
     bool success = false;
     if (WireGuardController::instance().isInitialized()) {
@@ -288,7 +299,7 @@ std::string configureWireGuard(const std::string &pars)
             if (!WireGuardController::instance().configure(clientPrivateKey,
                                                            peerPublicKey, peerPresharedKey,
                                                            peerEndpoint, allowed_ips_vector,
-                                                           listenPort, amneziawgConfig)) {
+                                                           listenPort, amneziawgConfig, persistentKeepalive, disconnectOnStaleHandshake)) {
                 spdlog::error("WireGuard: configureDaemon() failed");
                 break;
             }
@@ -503,29 +514,6 @@ std::string startWstunnel(const std::string &pars)
     return serializeResult(true);
 }
 
-std::string setMacAddress(const std::string &pars)
-{
-    std::string interface, macAddress, network;
-    bool isWifi;
-    deserializePars(pars, interface, macAddress, network, isWifi);
-
-    if (!Validation::isValidInterfaceName(interface)) {
-        spdlog::error("Invalid interface name: {}", interface);
-        return serializeResult(false);
-    }
-
-    if (!Validation::isValidMacAddress(macAddress)) {
-        spdlog::error("Invalid MAC address: {}", macAddress);
-        return serializeResult(false);
-    }
-
-    spdlog::info("Set mac address on {}: {}", interface, macAddress);
-    Utils::executeCommand("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport", {"-z"});
-    bool success = (Utils::executeCommand("ifconfig", {interface, "ether", macAddress}) == 0);
-    Utils::executeCommand("ifconfig", {interface, "up"});
-    return serializeResult(success);
-}
-
 std::string setDnsScriptEnabled(const std::string &pars)
 {
     bool enabled;
@@ -538,28 +526,6 @@ std::string setDnsScriptEnabled(const std::string &pars)
         Utils::executeCommand(std::string(Utils::kHelperBinDir) + "/dns.sh", {"-down"}, &out);
         spdlog::info("{}", out.c_str());
     }
-    return std::string();
-}
-
-std::string enableMacSpoofingOnBoot(const std::string &pars)
-{
-    bool enabled;
-    std::string interface, macAddress;
-    deserializePars(pars, enabled, interface, macAddress);
-
-    if (enabled) {
-        if (!Validation::isValidInterfaceName(interface)) {
-            spdlog::error("enableMacSpoofingOnBoot: invalid interface \"{}\", rejecting", interface);
-            return std::string();
-        }
-        if (!Validation::isValidMacAddress(macAddress)) {
-            spdlog::error("enableMacSpoofingOnBoot: invalid MAC address \"{}\", rejecting", macAddress);
-            return std::string();
-        }
-    }
-
-    spdlog::info("Set mac spoofing on boot: {}", enabled ? "true" : "false");
-    MacSpoofingOnBootManager::instance().setEnabled(enabled, interface, macAddress);
     return std::string();
 }
 

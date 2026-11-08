@@ -25,6 +25,17 @@ if(IS_BUILD_TESTS)
     set_target_properties(networkingvalidation.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
     ws_add_test(networkingvalidation)
 
+    # Compiles the lock directly instead of linking client-common: it needs nothing but the OS.
+    add_executable(systemwideapplock.test
+        systemwideapplock.test.cpp
+        systemwideapplock.test.h
+        ../utils/systemwideapplock.cpp
+    )
+    target_link_libraries(systemwideapplock.test PRIVATE Qt6::Test)
+    target_include_directories(systemwideapplock.test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+    set_target_properties(systemwideapplock.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    ws_add_test(systemwideapplock)
+
     # Covers NetworkUtils_linux only, hence the guard. Cross-platform NetworkUtils tests belong in
     # their own unguarded target, not here.
     if(UNIX AND NOT APPLE)
@@ -56,6 +67,18 @@ if(IS_BUILD_TESTS)
         set_target_properties(utilslinux.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
         ws_add_test(utilslinux)
     endif()
+
+    add_executable(utils.test
+        utils.test.cpp
+        utils.test.h
+    )
+    target_link_libraries(utils.test PRIVATE
+        Qt6::Test Qt6::Network engine client-common spdlog::spdlog ${OS_SPECIFIC_LIBRARIES})
+    target_include_directories(utils.test PRIVATE
+        ${PROJECT_DIRECTORY}/client-common
+    )
+    set_target_properties(utils.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    ws_add_test(utils)
 
     # Linux-only: DnsLeakParse reads resolvectl/nmcli output. Compiles the parser and ipaddress
     # directly instead of linking client-common, keeping the target free of Qt — the same module is

@@ -5,8 +5,8 @@
 
 set(WS_VERSION_MAJOR 2)
 set(WS_VERSION_MINOR 25)
-set(WS_VERSION_BUILD 2)
-set(WS_BUILD_TYPE "guinea_pig")
+set(WS_VERSION_BUILD 7)
+set(WS_BUILD_TYPE "beta")
 
 # WS_APP_IDENTIFIER: Internal identifier, no spaces. Used for service names,
 #   adapter names, pipe names, and other system identifiers.
@@ -72,7 +72,6 @@ set(WS_POSIX_CONFIG_DIR "/etc/windscribe")
 ### Windows
 ###
 
-# This variable is here here instead of gui.cmake because it is used when templating dependencies from tools/deps.  It is not used in the cli integration.
 # WS_WIN_CONFIG_SUBDIR: Subdirectory under Program Files used for config storage.
 #   e.g. "Windscribe" -> "C:\Program Files\Windscribe\config"
 set(WS_WIN_CONFIG_SUBDIR "${WS_PRODUCT_NAME}")

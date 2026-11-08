@@ -78,8 +78,9 @@ void Helper_posix::changeMtu(const QString &adapter, int mtu)
     sendCommand(HelperCommand::changeMtu, adapter.toStdString(), mtu);
 }
 
-bool Helper_posix::executeOpenVPN(const QString &config, const QString &httpProxy, unsigned int httpPort, const QString &socksProxy, unsigned int socksPort)
+bool Helper_posix::executeOpenVPN(const QString &config, const QString &httpProxy, unsigned int httpPort, const QString &socksProxy, unsigned int socksPort, QString &outDetail)
 {
+    outDetail.clear();
     CmdDnsManager dnsManager;
 #if defined(Q_OS_LINUX)
     switch (DnsScripts_linux::instance().dnsManager()) {
@@ -98,7 +99,9 @@ bool Helper_posix::executeOpenVPN(const QString &config, const QString &httpProx
     auto result = sendCommand(HelperCommand::executeOpenVPN, config.toStdString(), httpProxy.toStdString(), httpPort,
                               socksProxy.toStdString(), socksPort, dnsManager);
     bool success = false;
-    deserializeAnswer(result, success);
+    std::string detail;
+    deserializeAnswer(result, success, detail);
+    outDetail = QString::fromStdString(detail);
     return success;
 }
 
@@ -164,7 +167,8 @@ bool Helper_posix::configureWireGuard(const WireGuardConfig &config)
     AmneziawgConfig amneziawgConfig = config.amneziawgParamToHelperConfig();
 
     auto result = sendCommand(HelperCommand::configureWireGuard, clientPrivateKey, clientIpAddress, clientDnsAddressList,
-                              peerPublicKey, peerPresharedKey, peerEndpoint, allowedIps, listenPort, dnsManager, amneziawgConfig);
+                              peerPublicKey, peerPresharedKey, peerEndpoint, allowedIps, listenPort, dnsManager, amneziawgConfig,
+                              config.peerPersistentKeepalive().toStdString(), config.disconnectOnStaleHandshake());
     bool success = false;
     deserializeAnswer(result, success);
     return success;
@@ -279,14 +283,6 @@ bool Helper_posix::startStunnel(const QString &hostname, unsigned int port, unsi
 bool Helper_posix::startWstunnel(const QString &hostname, unsigned int port, unsigned int localPort, const QString &customSni)
 {
     auto result = sendCommand(HelperCommand::startWstunnel, hostname.toStdString(), port, localPort, customSni.toStdString());
-    bool success = false;
-    deserializeAnswer(result, success);
-    return success;
-}
-
-bool Helper_posix::setMacAddress(const QString &interface, const QString &macAddress, const QString &network, bool isWifi)
-{
-    auto result = sendCommand(HelperCommand::setMacAddress, interface.toStdString(), macAddress.toStdString(), network.toStdString(), isWifi);
     bool success = false;
     deserializeAnswer(result, success);
     return success;

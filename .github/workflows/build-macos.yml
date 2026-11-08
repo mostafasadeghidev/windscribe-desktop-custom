@@ -65,8 +65,6 @@ jobs:
       - name: Build macOS native libraries
         shell: bash
         run: |
-          bash ./tools/deps/install_wireguard
-          bash ./tools/deps/install_amneziawg
           bash ./tools/deps/install_wstunnel
 
       - name: Build app and test installer

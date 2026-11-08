@@ -84,8 +84,6 @@ jobs:
         run: |
           python tools\deps\install_openvpn_dco.py; if ($LASTEXITCODE) { exit 1 }
           python tools\deps\install_wintun.py;      if ($LASTEXITCODE) { exit 1 }
-          python tools\deps\install_wireguard.py;   if ($LASTEXITCODE) { exit 1 }
-          python tools\deps\install_amneziawg.py;   if ($LASTEXITCODE) { exit 1 }
           python tools\deps\install_wstunnel.py;    if ($LASTEXITCODE) { exit 1 }
 
       - name: Build app and installer

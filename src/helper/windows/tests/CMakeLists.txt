@@ -45,8 +45,28 @@ if(IS_BUILD_TESTS)
     )
     target_include_directories(ovpnmsgparse.test PRIVATE
         ..
-        "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPLET}/include"
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
     )
     set_target_properties(ovpnmsgparse.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
     ws_add_test(ovpnmsgparse)
+
+    add_executable(wireguardconfigwriter.test
+        wireguardconfigwriter.test.cpp
+        ../wireguard/wireguardconfigwriter.cpp
+        ../network_validation.cpp
+    )
+    target_link_libraries(wireguardconfigwriter.test PRIVATE
+        Ws2_32
+        Dnsapi
+        Ole32
+        Ntdll
+        Boost::serialization
+        spdlog::spdlog
+    )
+    target_include_directories(wireguardconfigwriter.test PRIVATE
+        ..
+        ../../../client/client-common
+    )
+    set_target_properties(wireguardconfigwriter.test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    ws_add_test(wireguardconfigwriter)
 endif(IS_BUILD_TESTS)

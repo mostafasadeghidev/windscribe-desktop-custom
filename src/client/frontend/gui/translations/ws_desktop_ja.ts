@@ -586,6 +586,10 @@ If you lose your account hash, it&apos;s gone forever and support cannot help yo
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Windscribe could not update your hosts file, which IKEv2 requires. Another program, such as antivirus or endpoint security software, may be blocking changes to it. Please try again, or use a different connection mode.</source>
+        <translation>WindscribeはIKEv2に必要なhostsファイルを更新できませんでした。ウイルス対策ソフトウェアやエンドポイント セキュリティ ソフトウェアなど、別のプログラムが変更をブロックしている可能性があります。もう一度お試しいただくか、別の接続モードを使用してください。</translation>
+    </message>
+    <message>
         <source>Split Tunneling Stopped</source>
         <translation>スプリット トンネリングが停止しました</translation>
     </message>
@@ -808,14 +812,6 @@ Recovering...</source>
     <message>
         <source>Select an application</source>
         <translation>アプリケーションを選択</translation>
-    </message>
-    <message>
-        <source>Read-Only File</source>
-        <translation>読み取り専用ファイル</translation>
-    </message>
-    <message>
-        <source>Your hosts file is read-only. IKEv2 connectivity requires for it to be writable. Fix the issue automatically?</source>
-        <translation>ホストファイルは読み取り専用です。IKEv2 接続では、書き込み可能である必要があります。問題を自動的に修正しますか?</translation>
     </message>
     <message>
         <source>The custom configuration could not be loaded.  Please check that it’s correct or contact support.</source>
@@ -1513,10 +1509,6 @@ If the problem persists after a restart, please send a debug log and open a supp
     <message>
         <source>Disabling Allow LAN Traffic will cause your secure hotspot to stop working.  Do you want to disable the hotspot?</source>
         <translation>LANトラフィックの許可を無効にすると、安全なホットスポットが機能しなくなります。 ホットスポットを無効にしますか?</translation>
-    </message>
-    <message>
-        <source>MAC spoofing is not supported on your version of MacOS.</source>
-        <translation>MAC スプーフィングは、お使いの Mac のバージョンではサポートされていません。</translation>
     </message>
     <message>
         <source>Automatically determine the MTU for your connection, or manually override.  This has no effect on TCP-based protocols.</source>
@@ -2386,6 +2378,10 @@ Connect to a network first</source>
 <context>
     <name>PreferencesWindow::SplitTunnelingAppsGroup</name>
     <message>
+        <source>This app is already in the list.</source>
+        <translation>このアプリは既にリストにあります。</translation>
+    </message>
+    <message>
         <source>There are too many apps in the list. Please remove some before adding more.</source>
         <translation>リストにアプリが多すぎます。さらに追加する前に、いくつかを削除してください。</translation>
     </message>
@@ -2715,6 +2711,14 @@ If the reinstall does not help, please contact Windscribe support for assistance
         <translation>AmneziaWG initパラメータには無効な文字が含まれています</translation>
     </message>
     <message>
+        <source>Invalid AmneziaWG parameter: %1</source>
+        <translation>Invalid AmneziaWG parameter: %1</translation>
+    </message>
+    <message>
+        <source>Invalid &quot;PersistentKeepalive&quot; value</source>
+        <translation>無効な「PersistentKeepalive」値</translation>
+    </message>
+    <message>
         <source>Static IPs</source>
         <translation>静的 IP アドレス</translation>
     </message>
@@ -2813,6 +2817,10 @@ If the reinstall does not help, please contact Windscribe support for assistance
     <message>
         <source>Alternate</source>
         <translation>代替</translation>
+    </message>
+    <message>
+        <source>Windscribe is already running in another user session on this computer. Quit Windscribe in that session, then try again.</source>
+        <translation>Windscribeはこのコンピューターの別のユーザーセッションですでに実行されています。そのセッションでWindscribeを終了してから、もう一度お試しください。</translation>
     </message>
 </context>
 <context>

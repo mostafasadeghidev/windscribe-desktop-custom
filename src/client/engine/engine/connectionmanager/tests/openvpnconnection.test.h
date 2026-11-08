@@ -36,6 +36,7 @@ private slots:
     void testParseConnectedSuccessReply();
     void testParseConnectedSuccessReplyMalformed();
     void testSanitizeString();
+    void testRedactManagementLine();
     void testMakeOvpnFileStunnelUsesLocalWrapper();
     void testMakeOvpnFileRemoteIpSuppression();
     void testMakeOvpnFileExtraConfigAppend();
@@ -43,6 +44,8 @@ private slots:
     void testMakeOvpnFileStunnelNoGatewayNoRoute();
     void testPrepareCustomConfigEmptyDnsNoInjection();
     void testOpenVpnCapabilities();
+    void testRunOpenVpnCustomConfigDetailEmitsCustomConfigInvalid();
+    void testRunOpenVpnEmptyDetailEmitsLaunchFailure();
 private:
     Helper *helper_ = nullptr;
 

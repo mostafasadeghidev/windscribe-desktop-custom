@@ -5,6 +5,7 @@
 
 #include <QElapsedTimer>
 #include <QObject>
+#include <QSet>
 #include <QWaitCondition>
 #include "firewall/firewallexceptions.h"
 #include "helper/helper.h"
@@ -135,8 +136,6 @@ public:
     void updateVersion(qint64 windowHandle);
     void stopUpdateVersion();
 
-    void makeHostsFileWritableWin();
-
     void updateCurrentNetworkInterface();
     void reconnect();
 
@@ -202,8 +201,6 @@ signals:
     void internetConnectivityChanged(bool connectivity);
     void packetSizeChanged(const types::EngineSettings &engineSettings);
     void packetSizeDetectionStateChanged(bool on, bool isError);
-
-    void hostsFileBecameWritable();
 
     void wireGuardAtKeyLimit();
     void protocolStatusChanged(const QVector<types::ProtocolStatus> status, bool isAutomaticMode);
@@ -280,11 +277,11 @@ private slots:
     void onConnectionManagerConnected();
     void onConnectionManagerDisconnected(DISCONNECT_REASON reason);
     void onConnectionManagerReconnecting();
-    void onConnectionManagerError(ConnectError err, const CurrentConnectionDescr &descr);
+    void onConnectionManagerError(ConnectError err, const CurrentConnectionDescr &descr, const QString &errorDetail);
     void onConnectionManagerInternetConnectivityChanged(bool connectivity);
     void onConnectionManagerStatisticsUpdated(quint64 bytesIn, quint64 bytesOut, bool isTotalBytes);
     void onConnectionManagerInterfaceUpdated(const QString &interfaceName);
-    void onConnectionManagerConnectingToHostname(const QString &hostname, const QString &ip, const QStringList &dnsServers);
+    void onConnectionManagerConnectingToHostname(const QString &hostname, const QString &ip, const QStringList &dnsServers, int nodeId);
     void onConnectionManagerProtocolPortChanged(const types::Protocol &protocol, const uint port);
     void onConnectionManagerTestTunnelResult(bool success, const QString & ipAddress);
     void onConnectionManagerWireGuardAtKeyLimit();
@@ -313,7 +310,7 @@ private slots:
     void onEmergencyConnectionConnected();
     void onEmergencyConnectionDisconnected(DISCONNECT_REASON reason);
     void onEmergencyConnectionReconnecting();
-    void onEmergencyConnectionError(ConnectError err, const CurrentConnectionDescr &descr);
+    void onEmergencyConnectionError(ConnectError err, const CurrentConnectionDescr &descr, const QString &errorDetail);
 
     void getRobertFiltersImpl();
     void setRobertFilterImpl(const api_responses::RobertFilter &filter);
@@ -331,16 +328,12 @@ private slots:
 
     void onMacAddressSpoofingChanged(const types::MacAddrSpoofing &macAddrSpoofing);
     void onMacAddressControllerSendUserWarning(USER_WARNING_TYPE userWarningType);
-#ifdef Q_OS_MACOS
-    void onMacAddressControllerMacSpoofApplied();
-#endif
 
     void stopPacketDetectionImpl();
 
-    void onConnectStateChanged(CONNECT_STATE state, DISCONNECT_REASON reason, ConnectError err, const LocationID &location);
+    void onConnectStateChanged(CONNECT_STATE state, DISCONNECT_REASON reason, ConnectError err, const QString &errorDetail, const LocationID &location);
 
 #ifdef Q_OS_MACOS
-    void onMacSpoofTimerTick();
     void onSystemExtensionStateChanged(SystemExtensions_mac::SystemExtensionState newState);
 #endif
 
@@ -407,8 +400,6 @@ private:
     DownloadHelper *downloadHelper_;
 #ifdef Q_OS_MACOS
     AutoUpdaterHelper_mac *autoUpdaterHelper_;
-    QDateTime macSpoofTimerStart_;
-    QTimer *macSpoofTimer_;
     // Last reported split tunnel extension availability, so unchanged availability is not re-emitted
     // on every recheck.
     std::optional<bool> lastSystemExtensionAvailability_;
@@ -428,10 +419,12 @@ private:
     LocationID locationId_;
     QString locationName_;
 
-    QString lastConnectingHostname_;
     types::Protocol lastConnectingProtocol_;
-
-    QTimer *delayedVpnStateTimer_ = nullptr;  // Timer for delayed VPN state notification on Windows OpenVPN
+    QString lastConnectingHostname_;
+    int lastConnectingNodeId_ = 0;
+    // Nodes the last server list marked force-disconnect, kept so an attempt that names its node
+    // after that update is still checked against it.
+    QSet<int> forceDisconnectNodeIds_;
 
     bool isNeedReconnectAfterRequestAuth_;
 
@@ -463,6 +456,12 @@ private:
     void loginImpl(bool isUseAuthHash, const QString &username, const QString &password, const QString &code2fa);
     void signupImpl(const QString &username, const QString &password, const QString &referringUsername, const QString &email, const QString &voucherCode);
     void updateServerLocations(const api_responses::ServerList &serverLocations, const api_responses::StaticIps &staticIps);
+    // Called with every server list update, carrying the ids of the nodes it marks force-disconnect
+    // (fd=1). If the connection in flight is on one of them, that node is being drained and we leave
+    // it now instead of waiting for it to disappear from the list or for the tunnel to time out. The
+    // reconnect goes through connectClickImpl, so the location info is rebuilt from the list that just
+    // arrived -- the drained node is no longer in it and another one is picked.
+    void evacuateForceDisconnectedNode(const QSet<int> &drainedNodeIds);
     void updateFirewallSettings(bool forceTurnOn = false);
     bool isApiAccessBlockedByAlwaysOnPlusFirewall() const;
     void updateWsnetConnectivityState();
@@ -508,6 +507,9 @@ private:
     QString customConfigFilename_;
     bool customConfigAllowFirewall_ = true;
     std::optional<bool> wasPremium_;
+    // What this instance last wrote to the settings file.
+    std::optional<std::string> savedWsnetSettings_;
+    std::optional<QString> savedUserId_;
 
     api_responses::AmneziawgUnblockParams amneziawgParams_;
     QString apiSuggestedAmneziawgPreset_;

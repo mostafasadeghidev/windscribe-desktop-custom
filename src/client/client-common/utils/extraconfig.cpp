@@ -19,10 +19,6 @@ const QString WS_MTU_OFFSET_OPENVPN_STR  = WS_PREFIX + "mtu-offset-openvpn";
 const QString WS_MTU_OFFSET_WG_STR       = WS_PREFIX + "mtu-offset-wg";
 const QString WS_UPDATE_CHANNEL_INTERNAL = WS_PREFIX + "override-update-channel-internal";
 
-const QString WS_TT_START_DELAY_STR = WS_PREFIX + "tunnel-test-start-delay";
-const QString WS_TT_TIMEOUT_STR     = WS_PREFIX + "tunnel-test-timeout";
-const QString WS_TT_RETRY_DELAY_STR = WS_PREFIX + "tunnel-test-retry-delay";
-const QString WS_TT_ATTEMPTS_STR    = WS_PREFIX + "tunnel-test-attempts";
 const QString WS_TT_NO_ERROR_STR    = WS_PREFIX + "tunnel-test-no-error";
 
 const QString WS_STAGING_STR = WS_PREFIX + "staging";
@@ -43,6 +39,8 @@ const QString WS_LOG_CTRLD = WS_PREFIX + "log-ctrld";
 const QString WS_LOG_PINGS = WS_PREFIX + "log-pings";
 const QString WS_LOG_SPLITTUNNELEXTENSION = WS_PREFIX + "log-splittunnelextension";
 const QString WS_NO_PINGS = WS_PREFIX + "no-pings";
+// The Windows helper parses this flag itself (see log/debug_trace.cpp); keep the two in sync.
+const QString WS_DEBUG_TRACE = WS_PREFIX + "debug-trace";
 
 const QString WS_API_ROOT_OVERRIDE = WS_PREFIX + "api-root-override";
 const QString WS_ASSETS_ROOT_OVERRIDE = WS_PREFIX + "assets-root-override";
@@ -151,46 +149,6 @@ int ExtraConfig::getMtuOffsetWireguard(bool &success)
     return getInt(WS_MTU_OFFSET_WG_STR, success);
 }
 
-int ExtraConfig::getTunnelTestStartDelay(bool &success)
-{
-    int delay = getInt(WS_TT_START_DELAY_STR, success);
-    if (success && delay < 0) {
-        delay = 0;
-    }
-
-    return delay;
-}
-
-int ExtraConfig::getTunnelTestTimeout(bool &success)
-{
-    int timeout = getInt(WS_TT_TIMEOUT_STR, success);
-    if (success && timeout < 0) {
-        timeout = 0;
-    }
-
-    return timeout;
-}
-
-int ExtraConfig::getTunnelTestRetryDelay(bool &success)
-{
-    int delay = getInt(WS_TT_RETRY_DELAY_STR, success);
-    if (success && delay < 0) {
-        delay = 0;
-    }
-
-    return delay;
-}
-
-int ExtraConfig::getTunnelTestAttempts(bool &success)
-{
-    int attempts = getInt(WS_TT_ATTEMPTS_STR, success);
-    if (success && attempts < 0) {
-        attempts = 0;
-    }
-
-    return attempts;
-}
-
 bool ExtraConfig::getIsTunnelTestNoError()
 {
     return getFlag(WS_TT_NO_ERROR_STR);
@@ -256,6 +214,11 @@ bool ExtraConfig::getSuppressApiToken()
 bool ExtraConfig::getNoPings()
 {
     return getFlag(WS_NO_PINGS);
+}
+
+bool ExtraConfig::getDebugTrace()
+{
+    return getFlag(WS_DEBUG_TRACE);
 }
 
 std::optional<QString> ExtraConfig::serverlistCountryOverride()

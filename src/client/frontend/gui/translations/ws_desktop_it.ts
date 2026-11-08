@@ -586,6 +586,10 @@ Se perdi l&apos;hash dell&apos;account, è sparito per sempre e il supporto non 
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Windscribe could not update your hosts file, which IKEv2 requires. Another program, such as antivirus or endpoint security software, may be blocking changes to it. Please try again, or use a different connection mode.</source>
+        <translation>Windscribe non è riuscito ad aggiornare il file hosts, necessario per IKEv2. Un altro programma, come un antivirus o un software di sicurezza degli endpoint, potrebbe bloccarne le modifiche. Riprova oppure utilizza una modalità di connessione diversa.</translation>
+    </message>
+    <message>
         <source>Split Tunneling Stopped</source>
         <translation>Split tunneling arrestato</translation>
     </message>
@@ -808,14 +812,6 @@ Recupero...</translation>
     <message>
         <source>Select an application</source>
         <translation>Seleziona un&apos;applicazione</translation>
-    </message>
-    <message>
-        <source>Read-Only File</source>
-        <translation>File di sola lettura</translation>
-    </message>
-    <message>
-        <source>Your hosts file is read-only. IKEv2 connectivity requires for it to be writable. Fix the issue automatically?</source>
-        <translation>Il file hosts è di sola lettura. La connettività IKEv2 richiede che sia scrivibile. Risolvi il problema automaticamente?</translation>
     </message>
     <message>
         <source>The custom configuration could not be loaded.  Please check that it’s correct or contact support.</source>
@@ -1513,10 +1509,6 @@ Se il problema persiste dopo un riavvio, inviare un registro di debug e aprire u
     <message>
         <source>Disabling Allow LAN Traffic will cause your secure hotspot to stop working.  Do you want to disable the hotspot?</source>
         <translation>La disabilitazione di Consenti traffico LAN causerà l&apos;interruzione del funzionamento dell&apos;hotspot sicuro.  Vuoi disattivare l&apos;hotspot?</translation>
-    </message>
-    <message>
-        <source>MAC spoofing is not supported on your version of MacOS.</source>
-        <translation>Lo spoofing MAC non è supportato nella versione di MacOS in uso.</translation>
     </message>
     <message>
         <source>Automatically determine the MTU for your connection, or manually override.  This has no effect on TCP-based protocols.</source>
@@ -2386,6 +2378,10 @@ Connettersi prima a una rete</translation>
 <context>
     <name>PreferencesWindow::SplitTunnelingAppsGroup</name>
     <message>
+        <source>This app is already in the list.</source>
+        <translation>Questa app è già nell&apos;elenco.</translation>
+    </message>
+    <message>
         <source>There are too many apps in the list. Please remove some before adding more.</source>
         <translation>Ci sono troppe app nell&apos;elenco. Si prega di rimuoverne alcuni prima di aggiungerne altri.</translation>
     </message>
@@ -2715,6 +2711,14 @@ Se la reinstallazione non risolve il problema, contattare il supporto Windscribe
         <translation>Il parametro init di AmneziaWG contiene caratteri non validi</translation>
     </message>
     <message>
+        <source>Invalid AmneziaWG parameter: %1</source>
+        <translation>Parametro AmneziaWG invalido: %1</translation>
+    </message>
+    <message>
+        <source>Invalid &quot;PersistentKeepalive&quot; value</source>
+        <translation>Valore &quot;PersistentKeepalive&quot; invalido</translation>
+    </message>
+    <message>
         <source>Static IPs</source>
         <translation>IP statici</translation>
     </message>
@@ -2813,6 +2817,10 @@ Se la reinstallazione non risolve il problema, contattare il supporto Windscribe
     <message>
         <source>Alternate</source>
         <translation>Alternativa</translation>
+    </message>
+    <message>
+        <source>Windscribe is already running in another user session on this computer. Quit Windscribe in that session, then try again.</source>
+        <translation>Windscribe è già in esecuzione nella sessione di un altro utente su questo computer. Esci da Windscribe in quella sessione, quindi riprova.</translation>
     </message>
 </context>
 <context>

@@ -586,6 +586,10 @@ Ak stratíte hash účtu, je navždy preč a podpora vám ho nemôže pomôcť o
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Windscribe could not update your hosts file, which IKEv2 requires. Another program, such as antivirus or endpoint security software, may be blocking changes to it. Please try again, or use a different connection mode.</source>
+        <translation>Windscribe nemohol aktualizovať váš súbor hosts, ktorý IKEv2 vyžaduje. Zmenám v ňom môže brániť iný program, napríklad antivírus alebo softvér na zabezpečenie koncových bodov. Skúste to znova alebo použite iný režim pripojenia.</translation>
+    </message>
+    <message>
         <source>Split Tunneling Stopped</source>
         <translation>Rozdelené tunelovanie zastavené</translation>
     </message>
@@ -808,14 +812,6 @@ Obnovuje sa…</translation>
     <message>
         <source>Select an application</source>
         <translation>Vyberte aplikáciu</translation>
-    </message>
-    <message>
-        <source>Read-Only File</source>
-        <translation>Súbor len na čítanie</translation>
-    </message>
-    <message>
-        <source>Your hosts file is read-only. IKEv2 connectivity requires for it to be writable. Fix the issue automatically?</source>
-        <translation>Váš súbor hosts je určený len na čítanie. Pripojenie IKEv2 vyžaduje, aby bol zapisovateľný. Chcete problém opraviť automaticky?</translation>
     </message>
     <message>
         <source>The custom configuration could not be loaded.  Please check that it’s correct or contact support.</source>
@@ -1513,10 +1509,6 @@ Ak problém pretrváva aj po reštarte, pošlite nám denník ladenia, otvorte �
     <message>
         <source>Disabling Allow LAN Traffic will cause your secure hotspot to stop working.  Do you want to disable the hotspot?</source>
         <translation>Zakázanie funkcie Povoliť prevádzku v sieti LAN spôsobí, že váš zabezpečený hotspot prestane fungovať.  Chcete hotspot vypnúť?</translation>
-    </message>
-    <message>
-        <source>MAC spoofing is not supported on your version of MacOS.</source>
-        <translation>Podvrhovanie MAC nie je vo vašej verzii MacOS podporované.</translation>
     </message>
     <message>
         <source>Automatically determine the MTU for your connection, or manually override.  This has no effect on TCP-based protocols.</source>
@@ -2386,6 +2378,10 @@ Najprv sa pripojte k sieti</translation>
 <context>
     <name>PreferencesWindow::SplitTunnelingAppsGroup</name>
     <message>
+        <source>This app is already in the list.</source>
+        <translation>Táto aplikácia už je v zozname.</translation>
+    </message>
+    <message>
         <source>There are too many apps in the list. Please remove some before adding more.</source>
         <translation>V zozname je príliš veľa aplikácií. Pred pridaním ďalších ich odstráňte.</translation>
     </message>
@@ -2715,6 +2711,14 @@ Ak preinštalovanie nepomôže, obráťte sa na podporu Windscribe a požiadajte
         <translation>Parameter init AmneziaWG obsahuje neplatné znaky</translation>
     </message>
     <message>
+        <source>Invalid AmneziaWG parameter: %1</source>
+        <translation>Neplatný parameter AmneziaWG: %1</translation>
+    </message>
+    <message>
+        <source>Invalid &quot;PersistentKeepalive&quot; value</source>
+        <translation>Neplatná hodnota &quot;PersistentKeepalive&quot;</translation>
+    </message>
+    <message>
         <source>Static IPs</source>
         <translation>Statické IP adresy</translation>
     </message>
@@ -2813,6 +2817,10 @@ Ak preinštalovanie nepomôže, obráťte sa na podporu Windscribe a požiadajte
     <message>
         <source>Alternate</source>
         <translation>Alternatívne</translation>
+    </message>
+    <message>
+        <source>Windscribe is already running in another user session on this computer. Quit Windscribe in that session, then try again.</source>
+        <translation>Windscribe už beží v relácii iného používateľa na tomto počítači. Ukončite Windscribe v danej relácii a skúste to znova.</translation>
     </message>
 </context>
 <context>

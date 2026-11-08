@@ -44,7 +44,7 @@ jobs:
         if: steps.linux-libs.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          for lib in wireguard amneziawg wstunnel; do
+          for lib in wstunnel; do
             docker run --rm -v "$GITHUB_WORKSPACE:/w" -v "$RUNNER_TEMP/wsvcpkg:/vcpkg-cache" ws-builder /bin/bash -lc "git config --global --add safe.directory /w && cd /w/tools/deps && ./install_$lib"
           done
 

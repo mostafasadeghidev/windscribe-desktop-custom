@@ -15,6 +15,8 @@ target_sources(client-common PRIVATE
     languagesutil.cpp
     languagesutil.h
     log/categories.cpp
+    log/debug_trace.cpp
+    log/debug_trace.h
     log/categories.h
     log/clean_sensitive_info.cpp
     log/clean_sensitive_info.h
@@ -32,8 +34,11 @@ target_sources(client-common PRIVATE
     network_utils/network_utils.h
     simplecrypt.cpp
     simplecrypt.h
+    systemwideapplock.cpp
+    systemwideapplock.h
     utils.cpp
     utils.h
+    ws_assert.cpp
     ws_assert.h
 )
 

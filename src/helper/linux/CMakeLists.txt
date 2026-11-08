@@ -2,6 +2,7 @@ project(helper)
 
 find_package(Boost CONFIG REQUIRED COMPONENTS serialization thread filesystem)
 find_package(OpenSSL REQUIRED)
+find_package(RapidJSON CONFIG REQUIRED)
 find_package(skyr-url CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 
@@ -17,7 +18,9 @@ set(SOURCES
     ../../client/client-common/types/ipaddress.cpp
     ../../client/client-common/utils/dns_utils/dnsleakparse.cpp
     ../common/io_posix.cpp
+    ../common/ovpn_early_exit_log.cpp
     ../common/ovpn_mgmt_posix.cpp
+    ../common/process_kill_posix.cpp
     ../common/spawn_posix.cpp
     ../common/validation_posix.cpp
     clear_wifi_history/clear_wifi_history.cpp
@@ -40,6 +43,8 @@ set(SOURCES
     split_tunneling/hostnames_manager/dns_resolver.cpp
     split_tunneling/hostnames_manager/hostnames_manager.cpp
     split_tunneling/hostnames_manager/ip_routes.cpp
+    split_tunneling/hostnames_manager/main_route_table.cpp
+    split_tunneling/hostnames_manager/route_change_monitor.cpp
     wireguard/defaultroutemonitor.cpp
     wireguard/wireguardadapter.cpp
     wireguard/userspace/wireguardgocommunicator.cpp
@@ -61,6 +66,7 @@ target_link_libraries(helper
                       OpenSSL::Crypto
                       skyr::skyr-url
                       spdlog::spdlog
+                      rapidjson
                       ${NFTABLES_LIB}
 )
 

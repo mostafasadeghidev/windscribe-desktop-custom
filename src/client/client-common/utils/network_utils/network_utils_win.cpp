@@ -1,6 +1,7 @@
 #include "network_utils_win.h"
 
 #include <atomic>
+#include <utility>
 
 #include <QHostAddress>
 #include <QList>
@@ -14,6 +15,7 @@
 #include <ocidl.h>
 
 #include "../log/categories.h"
+#include "../log/debug_trace.h"
 #include "../networktypes.h"
 #include "../winutils.h"
 #include "wlan_utils_win.h"
@@ -55,6 +57,7 @@ static T tableRowByIndex(const QList<T> &table, int index)
 
 static QList<IfTableRow> getIfTable()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::getIfTable");
     QList<IfTableRow> table;
 
     // Make an initial call to GetIfTable to get the necessary size into dwSize
@@ -119,6 +122,7 @@ static QList<IfTableRow> getIfTable()
 
 static QList<IfTable2Row> getIfTable2()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::getIfTable2");
     QList<IfTable2Row> if2Table;
 
     PMIB_IF_TABLE2 pIfTable2;
@@ -143,12 +147,26 @@ static QList<IfTable2Row> getIfTable2()
                             pEntry->InterfaceAndOperStatusFlags.ConnectorPresent,
                             pEntry->InterfaceAndOperStatusFlags.EndPointInterface,
                             pEntry->Type,
-                            !pEntry->InterfaceAndOperStatusFlags.NotMediaConnected);
+                            !pEntry->InterfaceAndOperStatusFlags.NotMediaConnected,
+                            QByteArray(reinterpret_cast<const char *>(pEntry->PermanentPhysicalAddress),
+                                       pEntry->PhysicalAddressLength));
             if2Table.append(row);
         }
     }
 
     FreeMibTable(pIfTable2);
+
+    for (IfTable2Row &row : if2Table) {
+        if (row.connectorPresent || row.permanentAddress.isEmpty()) {
+            continue;
+        }
+        for (const IfTable2Row &other : std::as_const(if2Table)) {
+            if (other.connectorPresent && other.permanentAddress == row.permanentAddress) {
+                row.sharesAddressWithConnectorAdapter = true;
+                break;
+            }
+        }
+    }
 
     return if2Table;
 }
@@ -182,6 +200,7 @@ static bool interfaceSubkeyHasProperty(int interfaceIndex, QString propertyName)
 
 static QList<IpAdapter> getIpAdapterTable()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::getIpAdapterTable");
     QList<IpAdapter> adapters;
 
     ULONG bufSize = sizeof(IP_ADAPTER_INFO) * 32;
@@ -224,6 +243,7 @@ static QList<IpAdapter> getIpAdapterTable()
 
 static QList<IpForwardRow> getIpForwardTable()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::getIpForwardTable");
     QList<IpForwardRow> forwardTable;
 
     DWORD dwSize = 0;
@@ -260,6 +280,7 @@ static QList<IpForwardRow> getIpForwardTable()
 // query failed; success with an empty network means the adapter has no connection.
 static HRESULT networkForInterfaceGUID(const QString &adapterGUID, CComPtr<INetwork> &network)
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::networkForInterfaceGUID");
     // Log once per failure streak, rearming on success: this runs on every network-change
     // notification, so a persistent failure would flood the log.
     static std::atomic<HRESULT> lastLoggedHr = S_OK;
@@ -362,7 +383,27 @@ static bool isRowUsableForAppVpn(const IfTable2Row &row)
         break;
     }
 
-    return row.valid && row.interfaceType != IF_TYPE_PPP && !row.endPointInterface && row.connectorPresent;
+    // A Hyper-V external switch or a network bridge moves the IP to an adapter with no connector of its own, which
+    // carries the permanent address of the physical adapter underneath it.
+    return row.valid && row.interfaceType != IF_TYPE_PPP && !row.endPointInterface
+           && (row.connectorPresent || row.sharesAddressWithConnectorAdapter);
+}
+
+bool NetworkUtils_win::hasPhysicalConnector(int interfaceIndex)
+{
+    return tableRowByIndex(getIfTable2(), interfaceIndex).connectorPresent;
+}
+
+QVector<types::NetworkInterface> NetworkUtils_win::spoofableNetworkInterfaces(const QVector<types::NetworkInterface> &networkInterfaces)
+{
+    QVector<types::NetworkInterface> result;
+    for (const auto &networkInterface : networkInterfaces) {
+        if (types::NetworkInterface::isNoNetworkInterface(networkInterface.interfaceIndex)
+            || hasPhysicalConnector(networkInterface.interfaceIndex)) {
+            result << networkInterface;
+        }
+    }
+    return result;
 }
 
 static IfTable2Row lowestMetricNonVpnIfTableRow()
@@ -396,6 +437,7 @@ static IfTable2Row lowestMetricNonVpnIfTableRow()
 
 static QList<AdapterAddress> getAdapterAddressesTable()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::getAdapterAddressesTable");
     QList<AdapterAddress> adapters;
 
     ULONG bufSize = sizeof(IP_ADAPTER_ADDRESSES_LH) * 32;
@@ -523,6 +565,7 @@ QString NetworkUtils_win::currentNetworkInterfaceGuid()
 
 std::optional<QString> NetworkUtils_win::networkIdFromInterfaceGuid(const QString &adapterGuid)
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::networkIdFromInterfaceGuid");
     CComPtr<INetwork> pNetwork;
     if (FAILED(networkForInterfaceGUID(adapterGuid, pNetwork)) || !pNetwork) {
         return std::nullopt;
@@ -538,6 +581,7 @@ std::optional<QString> NetworkUtils_win::networkIdFromInterfaceGuid(const QStrin
 
 bool NetworkUtils_win::haveActiveInterface()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::haveActiveInterface");
     // TODO: reconcile this with haveInternetConnectivity().  This function is used by NetworkDetectionManager::isOnlineImpl()
     // to determine if there is an active interface, without forcing a network list update.
     // Changing it to use haveInternetConnectivity() would reduce the amount of logic in this file, but may cause slightly different behavior.
@@ -554,6 +598,7 @@ bool NetworkUtils_win::haveActiveInterface()
 
 types::NetworkInterface NetworkUtils_win::currentNetworkInterface()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::currentNetworkInterface");
     types::NetworkInterface curNetworkInterface = types::NetworkInterface::noNetworkInterface();
 
     IfTable2Row row = lowestMetricNonVpnIfTableRow();
@@ -592,6 +637,7 @@ static QVector<types::NetworkInterface> addNoInterface(bool includeNoInterface, 
 
 QVector<types::NetworkInterface> NetworkUtils_win::currentNetworkInterfaces(bool includeNoInterface, bool forceUpdate)
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::currentNetworkInterfaces");
     static QVector<types::NetworkInterface> networkInterfaces;
     if (!forceUpdate && !networkInterfaces.isEmpty()) {
         return addNoInterface(includeNoInterface, networkInterfaces);
@@ -712,6 +758,7 @@ types::NetworkInterface NetworkUtils_win::interfaceByIndex(int index, bool &succ
 
 std::optional<bool> NetworkUtils_win::haveInternetConnectivity()
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::haveInternetConnectivity");
     INetworkListManager* mgr = nullptr;
     HRESULT res = ::CoCreateInstance(CLSID_NetworkListManager, NULL, CLSCTX_ALL,
                                      IID_INetworkListManager, reinterpret_cast<void**>(&mgr));
@@ -745,6 +792,7 @@ std::optional<bool> NetworkUtils_win::haveInternetConnectivity()
 
 static std::optional<bool> haveDefaultRouteForFamily(ADDRESS_FAMILY family)
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::haveDefaultRouteForFamily");
     PMIB_IPFORWARD_TABLE2 pTable = nullptr;
     DWORD result = GetIpForwardTable2(family, &pTable);
     if (result != NO_ERROR || pTable == nullptr) {
@@ -777,6 +825,7 @@ std::optional<bool> NetworkUtils_win::haveDefaultRouteV6()
 
 void NetworkUtils_win::interfaceAddressPresence(unsigned long ifIndex, bool &hasIpv4, bool &hasGlobalIpv6)
 {
+    WS_DEBUG_TRACE_SCOPE("NetworkUtils_win::interfaceAddressPresence");
     hasIpv4 = false;
     hasGlobalIpv6 = false;
 
@@ -826,6 +875,33 @@ QString NetworkUtils_win::getRoutingTable()
 {
     const QString cmd = WinUtils::getSystemDir() + QString("\\route.exe print");
     return WinUtils::executeBlockingCmd(cmd, "", 50).trimmed();
+}
+
+bool NetworkUtils_win::isIpv4AddressPreferred(unsigned long ifIndex, const types::IpAddress &address)
+{
+    if (!address.isValid() || !address.isV4()) {
+        return false;
+    }
+
+    PMIB_UNICASTIPADDRESS_TABLE table = nullptr;
+    const DWORD result = GetUnicastIpAddressTable(AF_INET, &table);
+    if (result != NO_ERROR || table == nullptr) {
+        qCDebug(LOG_BASIC) << "isIpv4AddressPreferred: GetUnicastIpAddressTable failed" << result;
+        return false;
+    }
+
+    bool isPreferred = false;
+    for (ULONG i = 0; i < table->NumEntries; i++) {
+        const MIB_UNICASTIPADDRESS_ROW &row = table->Table[i];
+        if (row.InterfaceIndex == ifIndex && row.Address.Ipv4.sin_addr.S_un.S_addr == address.ipv4NetworkOrder()
+            && row.DadState == IpDadStatePreferred) {
+            isPreferred = true;
+            break;
+        }
+    }
+
+    FreeMibTable(table);
+    return isPreferred;
 }
 
 bool NetworkUtils_win::isSsidAccessAvailable()
