@@ -144,10 +144,32 @@ jobs:
           version="$(cmake -DINTEGRATION=gui -DNO_SUFFIX=1 -P cmake/print_version.cmake 2>&1 | tr -d '[:space:]')"
           short="${GITHUB_SHA:0:7}"
           tag="v${version}-private-${short}"
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          shopt -s nullglob
+          installers=(build-exe/*.exe)
+          if [[ ${#installers[@]} -ne 1 ]]; then
+            echo "Expected exactly one installer, found ${#installers[@]}." >&2
+            exit 1
+          fi
+          cp "${installers[0]}" "$release_dir/Wind-Windows-${version}.exe"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          | سیستم | فایل نصب |
+          |---|---|
+          | ویندوز | \`Wind-Windows-${version}.exe\` |
+          | مک | \`Wind-Mac-${version}.dmg\` |
+          | لینوکس | \`Wind-Linux-${version}.deb\` |
+
+          هر سیستم جداگانه بیلد می‌شود. اگر فایلی هنوز در این فهرست نیست، بیلد آن تمام نشده است.
+
+          فایل‌های \`.sig\` و \`.cert.pem\` فقط برای بررسی امضای نسخهٔ لینوکس هستند و برای نصب لازم نیستند.
+
+          نسخهٔ آزمایشی خصوصی از کامیت \`${GITHUB_SHA}\`. امضا با گواهی خصوصی انجام شده و notarize نشده است.
+          EOF
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-              --title "Private test ${version} (${short})" \
-              --notes "Private test build of commit ${GITHUB_SHA}. Installers are signed with the self-signed private test certificate; they are not notarized and carry no vendor reputation." \
+              --title "Wind Desktop ${version} (${short})" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
               || true
           fi
-          gh release upload "$tag" build-exe/*.exe --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$tag" "$release_dir"/* --repo "$GITHUB_REPOSITORY" --clobber
