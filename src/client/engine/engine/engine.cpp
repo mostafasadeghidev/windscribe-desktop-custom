@@ -1155,6 +1155,13 @@ void Engine::sendDebugLogImpl()
 
 void Engine::getWebSessionTokenImpl(WEB_SESSION_PURPOSE purpose)
 {
+    // A web session signs a browser in to the shared Windscribe account, which employees must not reach.
+    // An empty token is the existing failure path, so every caller already handles it.
+    if (purpose == WEB_SESSION_PURPOSE_MANAGE_ACCOUNT || purpose == WEB_SESSION_PURPOSE_ADD_EMAIL ||
+        purpose == WEB_SESSION_PURPOSE_MANAGE_ROBERT_RULES) {
+        emit webSessionToken(purpose, "");
+        return;
+    }
     WSNet::instance()->serverAPI()->webSession(WSNet::instance()->apiResourcersManager()->authHash(),
                                              [this, purpose](ServerApiRetCode serverApiRetCode, const std::string &jsonData) {
         if (serverApiRetCode == ServerApiRetCode::kSuccess) {
