@@ -251,6 +251,9 @@ private:
     void gotoExitWindow(bool isLogout);
     void closeExitWindow(bool fromPrefs);
 
+    // The welcome or employee sign-in screen that preferences open over before sign-in.
+    ScalableGraphicsObject *preLoginWindow() const;
+    void setPreLoginClickable(bool clickable);
     void expandPreferencesFromWelcome();
     void collapsePreferencesFromWelcome();
 

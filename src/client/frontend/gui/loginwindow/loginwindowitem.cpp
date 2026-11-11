@@ -549,13 +549,14 @@ void LoginWindowItem::setAntiCensorship(bool enabled)
 
 void LoginWindowItem::onAntiCensorshipClick()
 {
-    // The preferences echo the new value back through setAntiCensorship().
-    emit antiCensorshipToggled(!isAntiCensorship_);
+    antiCensorshipButton_->unhover();
+    emit antiCensorshipSettingsClick();
 }
 
 void LoginWindowItem::updateAntiCensorshipText()
 {
-    antiCensorshipButton_->setText(isAntiCensorship_ ? tr("Anti-censorship: On") : tr("Anti-censorship: Off"));
+    antiCensorshipButton_->setText((isAntiCensorship_ ? tr("Anti-censorship: On") : tr("Anti-censorship: Off")) +
+                                  QStringLiteral("  \u203A"));
     antiCensorshipButton_->recalcBoundingRect();
     update();
 }

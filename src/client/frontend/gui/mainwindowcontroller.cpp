@@ -627,7 +627,8 @@ bool MainWindowController::isLocationsExpanded() const
 
 void MainWindowController::expandPreferences()
 {
-    if (curWindow_ == WINDOW_ID_WELCOME) {
+    // The employee sign-in screen opens preferences the same way the welcome screen does.
+    if (curWindow_ == WINDOW_ID_WELCOME || curWindow_ == WINDOW_ID_LOGIN) {
         expandPreferencesFromWelcome();
     } else if (curWindow_ == WINDOW_ID_CONNECT) {
         expandWindow(preferencesWindow_);
@@ -636,7 +637,7 @@ void MainWindowController::expandPreferences()
 
 void MainWindowController::collapsePreferences()
 {
-    if (curWindow_ == WINDOW_ID_WELCOME) {
+    if (curWindow_ == WINDOW_ID_WELCOME || curWindow_ == WINDOW_ID_LOGIN) {
         collapsePreferencesFromWelcome();
     } else if (curWindow_ == WINDOW_ID_CONNECT) {
         collapseWindow(preferencesWindow_, true);
@@ -2835,8 +2836,24 @@ void MainWindowController::closeExitWindow(bool fromPrefs)
     }
 }
 
+ScalableGraphicsObject *MainWindowController::preLoginWindow() const
+{
+    if (curWindow_ == WINDOW_ID_LOGIN) return loginWindow_;
+    return welcomeWindow_;
+}
+
+void MainWindowController::setPreLoginClickable(bool clickable)
+{
+    if (curWindow_ == WINDOW_ID_LOGIN) {
+        loginWindow_->setClickable(clickable);
+    } else {
+        welcomeWindow_->setClickable(clickable);
+    }
+}
+
 void MainWindowController::expandPreferencesFromWelcome()
 {
+    ScalableGraphicsObject *base = preLoginWindow();
     if (windowSizeManager_->state(preferencesWindow_) != WindowSizeManager::kWindowCollapsed) {
         return;
     }
@@ -2860,16 +2877,16 @@ void MainWindowController::expandPreferencesFromWelcome()
     animOpacity->setStartValue(0.0);
     animOpacity->setEndValue(1.0);
     animOpacity->setDuration(EXPAND_CHILD_WINDOW_OPACITY_DURATION);
-    connect(animOpacity, &QVariantAnimation::valueChanged, [this](const QVariant &value) {
+    connect(animOpacity, &QVariantAnimation::valueChanged, [this, base](const QVariant &value) {
         double prefOpacity = value.toDouble();
         preferencesWindow_->setOpacity(prefOpacity);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_PREFERENCES, prefOpacity, true);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_WELCOME_WINDOW, 1.0 - prefOpacity, true);
-        welcomeWindow_->setOpacity(1.0 - prefOpacity);
+        base->setOpacity(1.0 - prefOpacity);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_CONNECT_WINDOW, prefOpacity, false);
     });
 
-    int start = (int)welcomeWindow_->boundingRect().height();
+    int start = (int)base->boundingRect().height();
     int target =  windowSizeManager_->windowHeight(preferencesWindow_)*G_SCALE;
     QVariantAnimation *animResize = new QVariantAnimation(this);
     animResize->setStartValue(start);
@@ -2886,14 +2903,14 @@ void MainWindowController::expandPreferencesFromWelcome()
     });
 
     // resize finished
-    connect(animResize, &QVariantAnimation::finished, [this]() {
-        welcomeWindow_->hide();
+    connect(animResize, &QVariantAnimation::finished, [this, base]() {
+        base->hide();
         shadowManager_->setVisible(ShadowManager::SHAPE_ID_WELCOME_WINDOW, false);
         preferencesWindow_->setScrollBarVisibility(true);
         preferencesWindow_->setFocus();
     });
 
-    welcomeWindow_->setClickable(false);
+    setPreLoginClickable(false);
 
     // group finished
     QParallelAnimationGroup *animGroup = new QParallelAnimationGroup(this);
@@ -3069,6 +3086,7 @@ void MainWindowController::expandWindow(ResizableWindow *window)
 
 void MainWindowController::collapsePreferencesFromWelcome()
 {
+    ScalableGraphicsObject *base = preLoginWindow();
     if (windowSizeManager_->state(preferencesWindow_) != WindowSizeManager::kWindowExpanded) {
         return;
     }
@@ -3084,11 +3102,11 @@ void MainWindowController::collapsePreferencesFromWelcome()
 
     windowSizeManager_->setScrollPos(preferencesWindow_, preferencesWindow_->scrollPos());
     windowSizeManager_->setState(preferencesWindow_, WindowSizeManager::kWindowAnimating);
-    welcomeWindow_->show();
+    base->show();
 
     shadowManager_->changeRectangleSize(ShadowManager::SHAPE_ID_WELCOME_WINDOW,
-                                        QRect(0,0, welcomeWindow_->boundingRect().width(),
-                                              welcomeWindow_->boundingRect().height()));
+                                        QRect(0,0, base->boundingRect().width(),
+                                              base->boundingRect().height()));
 
     shadowManager_->setVisible(ShadowManager::SHAPE_ID_WELCOME_WINDOW, true);
     shadowManager_->setOpacity(ShadowManager::SHAPE_ID_WELCOME_WINDOW, 0.0, false);
@@ -3098,19 +3116,19 @@ void MainWindowController::collapsePreferencesFromWelcome()
     animOpacity->setStartValue(1.0);
     animOpacity->setEndValue(0.0);
     animOpacity->setDuration(EXPAND_CHILD_WINDOW_OPACITY_DURATION);
-    connect(animOpacity, &QVariantAnimation::valueChanged, [this](const QVariant &value) {
+    connect(animOpacity, &QVariantAnimation::valueChanged, [this, base](const QVariant &value) {
         double prefOpacity = value.toDouble();
         preferencesWindow_->setOpacity(prefOpacity);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_PREFERENCES, prefOpacity, true);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_WELCOME_WINDOW, 1.0 - prefOpacity, false);
-        welcomeWindow_->setOpacity(1.0 - prefOpacity);
+        base->setOpacity(1.0 - prefOpacity);
         shadowManager_->setOpacity(ShadowManager::SHAPE_ID_CONNECT_WINDOW, prefOpacity, false);
     });
 
     // Resizing
     QVariantAnimation *animResize = new QVariantAnimation(this);
     animResize->setStartValue((int)preferencesWindow_->boundingRect().height());
-    animResize->setEndValue((int)welcomeWindow_->boundingRect().height());
+    animResize->setEndValue((int)base->boundingRect().height());
     animResize->setDuration(EXPAND_PREFERENCES_RESIZE_DURATION);
     connect(animResize, &QVariantAnimation::valueChanged, [this](const QVariant &value) {
         preferencesWindow_->setHeight(value.toInt(), true);
@@ -3129,9 +3147,9 @@ void MainWindowController::collapsePreferencesFromWelcome()
 
     // group finished
     QParallelAnimationGroup *animGroup = new QParallelAnimationGroup(this);
-    connect(animGroup, &QVariantAnimation::finished, [this]() {
-        welcomeWindow_->setClickable(true);
-        welcomeWindow_->setFocus();
+    connect(animGroup, &QVariantAnimation::finished, [this, base]() {
+        setPreLoginClickable(true);
+        base->setFocus();
         windowSizeManager_->setState(preferencesWindow_, WindowSizeManager::kWindowCollapsed);
         preferencesWindow_->onWindowCollapsed();
         emit preferencesCollapsed();

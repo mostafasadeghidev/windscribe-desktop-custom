@@ -204,6 +204,11 @@ void PreferencesWindowItem::setCurrentTab(PREFERENCES_TAB_TYPE tab, CONNECTION_S
             connectionWindowItem_->setScreen(CONNECTION_SCREEN_SPLIT_TUNNELING);
             setPreferencesWindowToSplitTunnelingHome();
         }
+        else if (subpage == CONNECTION_SCREEN_ANTI_CENSORSHIP)
+        {
+            tabControlItem_->setCurrentTab(TAB_CONNECTION);
+            onAntiCensorshipSettingsPageClick();
+        }
     }
 }
 

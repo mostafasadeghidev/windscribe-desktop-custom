@@ -49,7 +49,7 @@ signals:
                     const QString &code2fa);
     void firewallTurnOffClick();
     void backClick();
-    void antiCensorshipToggled(bool enabled);
+    void antiCensorshipSettingsClick();
 
 private slots:
     void onBackClick();
@@ -107,7 +107,7 @@ private:
     int curForgotAnd2FAPosY_;
     CommonGraphics::TextButton *twoFactorAuthButton_;
     CommonGraphics::TextButton *forgotPassButton_;
-    // Lets an employee on a filtered network turn anti-censorship on before the first sign-in.
+    // Lets an employee on a filtered network adjust anti-censorship before the first sign-in.
     CommonGraphics::TextButton *antiCensorshipButton_;
     bool isAntiCensorship_ = false;
     void updateAntiCensorshipText();
