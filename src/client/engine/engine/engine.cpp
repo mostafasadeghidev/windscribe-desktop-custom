@@ -2090,6 +2090,8 @@ void Engine::updateAdvancedParamsImpl()
     WSNet::instance()->advancedParameters()->setCountryOverrideValue(countryOverride.has_value() ? countryOverride->toStdString() : "");
     WSNet::instance()->advancedParameters()->setIgnoreCountryOverride(ExtraConfig::instance().serverListIgnoreCountryOverride());
     WSNet::instance()->advancedParameters()->setSuppressBridgeApiTokenRequest(ExtraConfig::instance().getSuppressApiToken());
+    // API roots edited in the advanced parameters take effect without a restart.
+    updateApiResolutionSettingsInWsnet();
 }
 
 void Engine::onDownloadHelperProgressChanged(uint progressPercent)
@@ -3447,12 +3449,14 @@ void Engine::updateApiResolutionSettingsInWsnet()
 {
     auto apiRootOverride = ExtraConfig::instance().apiRootOverride();
     auto assetsRootOverride = ExtraConfig::instance().assetsRootOverride();
-    if (!apiRootOverride.isEmpty() || !assetsRootOverride.isEmpty()) {
-        WSNet::instance()->serverAPI()->setApiResolutionsSettings(apiRootOverride.toStdString(), assetsRootOverride.toStdString());
-    } else {
-        // Default behavior, no overrides
-        WSNet::instance()->serverAPI()->setApiResolutionsSettings(std::string(), std::string());
+    // Employee build: filtered networks reach the company worker but not the Windscribe API, so API calls go
+    // through the worker's relay unless the advanced parameters name other roots. Setting
+    // ws-api-root-override=api.windscribe.com and ws-assets-root-override=assets.windscribe.com goes direct again.
+    if (apiRootOverride.isEmpty() && assetsRootOverride.isEmpty()) {
+        apiRootOverride = QStringLiteral("wind-gate.throbbing-boat-c9fc.workers.dev/ws/api");
+        assetsRootOverride = QStringLiteral("wind-gate.throbbing-boat-c9fc.workers.dev/ws/assets");
     }
+    WSNet::instance()->serverAPI()->setApiResolutionsSettings(apiRootOverride.toStdString(), assetsRootOverride.toStdString());
 }
 
 void Engine::rotateIpImpl()
