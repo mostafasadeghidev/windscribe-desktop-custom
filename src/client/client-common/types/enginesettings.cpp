@@ -11,6 +11,11 @@
 
 const int typeIdEngineSettings = qRegisterMetaType<types::EngineSettings>("types::EngineSettings");
 
+namespace {
+// Marks that the employee build has applied its anti-censorship default, so a later opt-out sticks.
+const QString kEmployeeAntiCensorshipDefaultKey = "employeeAntiCensorshipDefault";
+}
+
 namespace types {
 
 EngineSettings::EngineSettings() : d(new EngineSettingsData)
@@ -128,6 +133,15 @@ bool EngineSettings::loadFromSettings()
             qCInfo(LOG_BASIC) << "Automatically enabled anti-censorship feature (ExtraTLSPadding) due to locale";
             setIsAPIAntiCensorship(true);
         }
+    }
+
+    // Employee build: employees mostly sign in from filtered networks, where the API is unreachable without
+    // anti-censorship. Turn it on once, for new and existing installs alike; the employee can still turn it off.
+    if (!settings.contains(kEmployeeAntiCensorshipDefaultKey)) {
+        qCInfo(LOG_BASIC) << "Employee build: turning anti-censorship on by default";
+        setIsAPIAntiCensorship(true);
+        settings.setValue(kEmployeeAntiCensorshipDefaultKey, true);
+        saveToSettings();
     }
 
     if (d->language.isEmpty()) {

@@ -39,6 +39,7 @@ public:
 
     void setUsernameFocus();
     void setEmployeeUsername(const QString &username);
+    void setAntiCensorship(bool enabled);
 
 signals:
     void minimizeClick();
@@ -48,6 +49,7 @@ signals:
                     const QString &code2fa);
     void firewallTurnOffClick();
     void backClick();
+    void antiCensorshipToggled(bool enabled);
 
 private slots:
     void onBackClick();
@@ -58,6 +60,7 @@ private slots:
 
     void onTwoFactorAuthClick();
     void onForgotPassClick();
+    void onAntiCensorshipClick();
 
     void onForgotAnd2FAPosYChanged(const QVariant &value);
     void onErrorChanged(const QVariant &value);
@@ -104,6 +107,10 @@ private:
     int curForgotAnd2FAPosY_;
     CommonGraphics::TextButton *twoFactorAuthButton_;
     CommonGraphics::TextButton *forgotPassButton_;
+    // Lets an employee on a filtered network turn anti-censorship on before the first sign-in.
+    CommonGraphics::TextButton *antiCensorshipButton_;
+    bool isAntiCensorship_ = false;
+    void updateAntiCensorshipText();
     QVariantAnimation forgotAnd2FAPosYAnimation_;
 
     LoginWindow::ERROR_MESSAGE_TYPE curError_;

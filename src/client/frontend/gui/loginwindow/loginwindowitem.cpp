@@ -101,6 +101,11 @@ LoginWindowItem::LoginWindowItem(QGraphicsObject *parent, PreferencesHelper *pre
     connect(forgotPassButton_, &CommonGraphics::TextButton::clicked, this, &LoginWindowItem::onForgotPassClick);
     forgotPassButton_->quickHide();
 
+    antiCensorshipButton_ = new CommonGraphics::TextButton("", FontDescr(12, QFont::Normal), Qt::white, true, this);
+    antiCensorshipButton_->setUnhoverOpacity(OPACITY_SIXTY);
+    connect(antiCensorshipButton_, &CommonGraphics::TextButton::clicked, this, &LoginWindowItem::onAntiCensorshipClick);
+    antiCensorshipButton_->quickShow();
+
     loginButton_ = new LoginButton(this);
     connect(loginButton_, &LoginButton::clicked, this, &LoginWindowItem::onLoginClick);
 
@@ -255,6 +260,7 @@ void LoginWindowItem::resetState()
     twoFactorAuthButton_->setPos(WINDOW_MARGIN * G_SCALE, curForgotAnd2FAPosY_ * G_SCALE);
     forgotPassButton_->setPos(twoFactorAuthButton_->boundingRect().width()
             + (WINDOW_MARGIN + FORGOT_POS_X_SPACING)*G_SCALE, curForgotAnd2FAPosY_ * G_SCALE);
+    antiCensorshipButton_->setPos(WINDOW_MARGIN * G_SCALE, curForgotAnd2FAPosY_ * G_SCALE);
 }
 
 void LoginWindowItem::setClickable(bool enabled)
@@ -374,6 +380,7 @@ void LoginWindowItem::onForgotPassClick()
 void LoginWindowItem::onForgotAnd2FAPosYChanged(const QVariant &value)
 {
     curForgotAnd2FAPosY_ = value.toInt();
+    antiCensorshipButton_->setPos(WINDOW_MARGIN*G_SCALE, curForgotAnd2FAPosY_*G_SCALE);
 
     twoFactorAuthButton_->setPos(WINDOW_MARGIN*G_SCALE, curForgotAnd2FAPosY_*G_SCALE);
     forgotPassButton_->setPos(twoFactorAuthButton_->boundingRect().width()
@@ -405,6 +412,7 @@ void LoginWindowItem::onLanguageChanged()
     twoFactorAuthButton_->recalcBoundingRect();
     forgotPassButton_->setText(tr("Forgot password?"));
     forgotPassButton_->recalcBoundingRect();
+    updateAntiCensorshipText();
     standardLoginButton_->setText(tr("Standard"));
     standardLoginButton_->recalcBoundingRect();
     hashedLoginButton_->setText(tr("Hashed"));
@@ -463,6 +471,9 @@ void LoginWindowItem::updatePositions()
     forgotPassButton_->setPos(twoFactorAuthButton_->boundingRect().width()
         + (WINDOW_MARGIN + FORGOT_POS_X_SPACING)*G_SCALE, curForgotAnd2FAPosY_ * G_SCALE);
     forgotPassButton_->recalcBoundingRect();
+
+    antiCensorshipButton_->setPos(WINDOW_MARGIN * G_SCALE, curForgotAnd2FAPosY_ * G_SCALE);
+    antiCensorshipButton_->recalcBoundingRect();
 }
 
 void LoginWindowItem::keyPressEvent(QKeyEvent *event)
@@ -528,6 +539,25 @@ void LoginWindowItem::setUsernameFocus()
 void LoginWindowItem::setEmployeeUsername(const QString &username)
 {
     if (!username.isEmpty()) usernameEntry_->setText(username);
+}
+
+void LoginWindowItem::setAntiCensorship(bool enabled)
+{
+    isAntiCensorship_ = enabled;
+    updateAntiCensorshipText();
+}
+
+void LoginWindowItem::onAntiCensorshipClick()
+{
+    // The preferences echo the new value back through setAntiCensorship().
+    emit antiCensorshipToggled(!isAntiCensorship_);
+}
+
+void LoginWindowItem::updateAntiCensorshipText()
+{
+    antiCensorshipButton_->setText(isAntiCensorship_ ? tr("Anti-censorship: On") : tr("Anti-censorship: Off"));
+    antiCensorshipButton_->recalcBoundingRect();
+    update();
 }
 
 int LoginWindowItem::centeredOffset(int background_length, int graphic_length)

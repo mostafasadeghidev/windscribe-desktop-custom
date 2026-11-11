@@ -254,6 +254,12 @@ MainWindow::MainWindow() :
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::twoFactorAuthClick, this, &MainWindow::onLoginTwoFactorAuthWindowClick);
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::firewallTurnOffClick, this, &MainWindow::onLoginFirewallTurnOffClick);
     connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::loginClick, this, &MainWindow::onLoginClick);
+    connect(mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::antiCensorshipToggled, this, [this](bool enabled) {
+        backend_->getPreferences()->setAPIAntiCensorship(enabled);
+    });
+    connect(backend_->getPreferences(), &Preferences::isAPIAntiCensorshipChanged,
+            mainWindowController_->getLoginWindow(), &LoginWindow::LoginWindowItem::setAntiCensorship);
+    mainWindowController_->getLoginWindow()->setAntiCensorship(backend_->getPreferences()->isAPIAntiCensorship());
 
 
     // singup window signals
